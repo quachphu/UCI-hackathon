@@ -39,6 +39,11 @@ Required variables:
 	- `call_transcripts`
 	- `case_cards`
 	- `users`
+7. Create a composite Firestore index for client chat history queries:
+	- Collection: `chat_messages`
+	- Fields: `clientUid` (Ascending), `createdAt` (Ascending)
+	- This is used by the primary realtime query on the client page.
+	- The app includes a compatibility fallback if this index is missing, but indexed mode is preferred for stable ordering and performance.
 
 Firebase client initialization lives in `src/lib/firebase.ts`.
 
