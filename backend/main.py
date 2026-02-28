@@ -1,13 +1,21 @@
 from fastapi import FastAPI
-from app.routes.test import test_router
+from fastapi.middleware.cors import CORSMiddleware
 from app.routes.llm import llm_router
 
+app = FastAPI(title="988 Crisis Chatbot API")
 
-app = FastAPI()
-app.include_router(test_router, prefix="/api", tags=["api"])
+# Allow the Next.js frontend (and any dev origin) to call the API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # tighten in production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(llm_router, prefix="/llm", tags=["llm"])
 
 
 @app.get("/")
 def root():
-    return {"message": "Hello World"}
+    return {"message": "988 Crisis Chatbot API is running"}
