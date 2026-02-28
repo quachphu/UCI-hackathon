@@ -31,9 +31,10 @@ Required variables:
 
 1. Go to Firebase Console and create/select a project.
 2. Add a **Web App** and copy the config values into `.env.local`.
-3. In **Authentication** → **Sign-in method**, enable **Email/Password**.
-4. In **Firestore Database**, create database in production or test mode.
-5. Create these collections:
+3. In **Authentication** → **Sign-in method**, enable **Email/Password** and **Google**.
+4. In **Authentication** → **Settings** → **Authorized domains**, ensure your frontend host is listed (for local dev, include `localhost`).
+5. In **Firestore Database**, create database in production or test mode.
+6. Create these collections:
 	- `chat_messages`
 	- `call_transcripts`
 	- `case_cards`

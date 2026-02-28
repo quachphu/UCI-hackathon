@@ -1,15 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   createUserWithEmailAndPassword,
-  onAuthStateChanged,
   signInWithEmailAndPassword,
-  signOut,
-  type User,
 } from "firebase/auth";
 import { addDoc, collection, getDocs, limit, query, serverTimestamp } from "firebase/firestore";
-import { auth, db, isFirebaseConfigured } from "@/lib/firebase";
+import { useAuth } from "@/lib/auth-context";
+import {
+  auth,
+  db,
+  isFirebaseConfigured,
+  signInWithGooglePopup,
+  signOutCurrentUser,
+} from "@/lib/firebase";
 
 type SmokeRecord = {
   id: string;
@@ -18,25 +23,14 @@ type SmokeRecord = {
 };
 
 export default function Home() {
+  const router = useRouter();
+  const { user } = useAuth();
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("Firebase is ready.");
   const [smokeText, setSmokeText] = useState("first smoke test");
-  const [user, setUser] = useState<User | null>(null);
   const [records, setRecords] = useState<SmokeRecord[]>([]);
-
-  useEffect(() => {
-    if (!auth) {
-      return;
-    }
-
-    const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
-      setUser(nextUser);
-    });
-
-    return unsubscribe;
-  }, []);
 
   async function handleSignUp() {
     if (!auth) {
@@ -67,16 +61,21 @@ export default function Home() {
   }
 
   async function handleSignOut() {
-    if (!auth) {
-      setMessage("Firebase Auth is not configured.");
-      return;
-    }
-
     try {
-      await signOut(auth);
+      await signOutCurrentUser();
       setMessage("Signed out.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Sign out failed.");
+    }
+  }
+
+  async function handleGoogleSignIn() {
+    try {
+      await signInWithGooglePopup();
+      setMessage("Google sign-in successful.");
+      router.push("/chat");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Google sign-in failed.");
     }
   }
 
@@ -168,6 +167,9 @@ export default function Home() {
             </button>
             <button className="rounded-md border px-3 py-2" onClick={handleSignIn}>
               Sign in
+            </button>
+            <button className="rounded-md border px-3 py-2" onClick={handleGoogleSignIn}>
+              Sign in with Google
             </button>
             <button className="rounded-md border px-3 py-2" onClick={handleSignOut}>
               Sign out

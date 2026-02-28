@@ -1,5 +1,11 @@
 import { getApp, getApps, initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import {
+  getAuth,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signOut,
+  type UserCredential,
+} from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
@@ -23,3 +29,27 @@ const app = isFirebaseConfigured
 
 export const auth = app ? getAuth(app) : undefined;
 export const db = app ? getFirestore(app) : undefined;
+
+const googleProvider = auth ? new GoogleAuthProvider() : undefined;
+
+if (googleProvider) {
+  googleProvider.setCustomParameters({
+    prompt: "select_account",
+  });
+}
+
+export async function signInWithGooglePopup(): Promise<UserCredential> {
+  if (!auth || !googleProvider) {
+    throw new Error("Firebase Auth is not configured.");
+  }
+
+  return signInWithPopup(auth, googleProvider);
+}
+
+export async function signOutCurrentUser(): Promise<void> {
+  if (!auth) {
+    throw new Error("Firebase Auth is not configured.");
+  }
+
+  await signOut(auth);
+}

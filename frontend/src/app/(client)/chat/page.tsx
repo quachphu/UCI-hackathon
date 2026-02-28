@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { onAuthStateChanged, type User } from "firebase/auth";
+import { useRouter } from "next/navigation";
 import {
 	addDoc,
 	collection,
@@ -11,6 +11,7 @@ import {
 	serverTimestamp,
 } from "firebase/firestore";
 import { auth, db, isFirebaseConfigured } from "@/lib/firebase";
+import { useAuth } from "@/lib/auth-context";
 
 type ChatMessage = {
 	id: string;
@@ -19,24 +20,19 @@ type ChatMessage = {
 };
 
 export default function ClientChatPage() {
+	const router = useRouter();
+	const { user: currentUser, loading } = useAuth();
 	const [message, setMessage] = useState("I need someone to talk to.");
 	const [status, setStatus] = useState("Ready");
-	const [currentUser, setCurrentUser] = useState<User | null>(null);
 	const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
 
 	const canUseFirebase = useMemo(() => Boolean(auth && db && isFirebaseConfigured), []);
 
 	useEffect(() => {
-		if (!auth) {
-			return;
+		if (!loading && !currentUser) {
+			router.replace("/");
 		}
-
-		const unsubscribe = onAuthStateChanged(auth, (user) => {
-			setCurrentUser(user);
-		});
-
-		return unsubscribe;
-	}, []);
+	}, [currentUser, loading, router]);
 
 	async function loadMessages() {
 		if (!db) {
@@ -60,6 +56,18 @@ export default function ClientChatPage() {
 		} catch (error) {
 			setStatus(error instanceof Error ? error.message : "Failed to load messages.");
 		}
+	}
+
+	if (loading) {
+		return (
+			<main className="mx-auto min-h-screen w-full max-w-4xl px-6 py-12">
+				<p className="text-sm text-foreground/70">Checking authentication…</p>
+			</main>
+		);
+	}
+
+	if (!currentUser) {
+		return null;
 	}
 
 	async function sendMessage() {

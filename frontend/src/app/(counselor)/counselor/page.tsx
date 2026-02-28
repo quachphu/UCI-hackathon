@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { collection, getDocs, limit, query } from "firebase/firestore";
+import { useAuth } from "@/lib/auth-context";
 import { db, isFirebaseConfigured } from "@/lib/firebase";
 
 type CaseCard = {
@@ -21,6 +23,8 @@ type ChatLog = {
 };
 
 export default function CounselorPage() {
+	const router = useRouter();
+	const { user: currentUser, loading } = useAuth();
 	const [status, setStatus] = useState("Ready");
 	const [caseCards, setCaseCards] = useState<CaseCard[]>([]);
 	const [chatLogs, setChatLogs] = useState<ChatLog[]>([]);
@@ -76,8 +80,27 @@ export default function CounselorPage() {
 	}
 
 	useEffect(() => {
-		void loadDashboard();
-	}, []);
+		if (!loading && !currentUser) {
+			router.replace("/");
+			return;
+		}
+
+		if (currentUser) {
+			void loadDashboard();
+		}
+	}, [currentUser, loading, router]);
+
+	if (loading) {
+		return (
+			<main className="mx-auto min-h-screen w-full max-w-6xl px-6 py-12">
+				<p className="text-sm text-foreground/70">Checking authentication…</p>
+			</main>
+		);
+	}
+
+	if (!currentUser) {
+		return null;
+	}
 
 	return (
 		<main className="mx-auto min-h-screen w-full max-w-6xl px-6 py-12">
@@ -88,6 +111,7 @@ export default function CounselorPage() {
 
 			<div className="mt-6 rounded-xl border border-black/10 p-4 dark:border-white/10">
 				<p className="text-sm">Firebase ready: {isFirebaseConfigured ? "Yes" : "No"}</p>
+				<p className="text-sm">Signed in user: {currentUser.email ?? "unknown"}</p>
 				<button className="mt-3 rounded-md border px-3 py-2 text-sm" onClick={loadDashboard}>
 					Refresh
 				</button>
