@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
 	addDoc,
 	collection,
@@ -9,7 +8,10 @@ import {
 	limit,
 	query,
 	serverTimestamp,
+	type Timestamp,
 } from "firebase/firestore";
+import ChatWindow from "@/app/components/chat/ChatWindow";
+import type { ChatMessageItem } from "@/app/components/chat/MessageList";
 import { auth, db, isFirebaseConfigured } from "@/lib/firebase";
 import { useAuth } from "@/lib/auth-context";
 
@@ -17,74 +19,130 @@ type ChatMessage = {
 	id: string;
 	message: string;
 	uid: string;
+	clientUid?: string;
+	createdAt?: Timestamp;
 };
 
 export default function ClientChatPage() {
-	const router = useRouter();
-	const { user: currentUser, loading } = useAuth();
+	const { user: currentUser } = useAuth();
+	const [guestUid, setGuestUid] = useState("");
 	const [message, setMessage] = useState("I need someone to talk to.");
 	const [status, setStatus] = useState("Ready");
 	const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+	const [isSending, setIsSending] = useState(false);
 
+	const activeClientUid = currentUser?.uid ?? guestUid;
 	const canUseFirebase = useMemo(() => Boolean(auth && db && isFirebaseConfigured), []);
 
 	useEffect(() => {
-		if (!loading && !currentUser) {
-			router.replace("/");
+		if (currentUser) {
+			setGuestUid("");
+			return;
 		}
-	}, [currentUser, loading, router]);
 
-	async function loadMessages() {
-		if (!db) {
+		const storageKey = "guest_client_uid";
+		const savedUid = window.localStorage.getItem(storageKey)?.trim() ?? "";
+		if (savedUid) {
+			setGuestUid(savedUid);
+			return;
+		}
+
+		const generatedUid = `guest_${crypto.randomUUID().slice(0, 8)}`;
+		window.localStorage.setItem(storageKey, generatedUid);
+		setGuestUid(generatedUid);
+	}, [currentUser]);
+
+	const loadMessages = useCallback(async () => {
+		if (!db || !activeClientUid) {
 			setStatus("Firestore not configured.");
 			return;
 		}
 
 		try {
-			const snapshot = await getDocs(query(collection(db, "chat_messages"), limit(15)));
-			const items = snapshot.docs.map((doc) => {
-				const data = doc.data() as { message?: string; uid?: string };
-				return {
-					id: doc.id,
-					message: data.message ?? "",
-					uid: data.uid ?? "unknown",
-				};
-			});
+			const snapshot = await getDocs(query(collection(db, "chat_messages"), limit(300)));
+			const items = snapshot.docs
+				.map((doc) => {
+					const data = doc.data() as {
+						message?: string;
+						uid?: string;
+						clientUid?: string;
+						createdAt?: Timestamp;
+					};
+					return {
+						id: doc.id,
+						message: data.message ?? "",
+						uid: data.uid ?? "unknown",
+						clientUid: data.clientUid,
+						createdAt: data.createdAt,
+					};
+				})
+				.filter((item) => item.uid === activeClientUid || item.clientUid === activeClientUid);
 
 			setChatMessages(items);
 			setStatus(`Loaded ${items.length} message(s).`);
 		} catch (error) {
 			setStatus(error instanceof Error ? error.message : "Failed to load messages.");
 		}
-	}
+	}, [activeClientUid]);
 
-	if (loading) {
-		return (
-			<main className="mx-auto min-h-screen w-full max-w-4xl px-6 py-12">
-				<p className="text-sm text-foreground/70">Checking authentication…</p>
-			</main>
-		);
-	}
+	useEffect(() => {
+		if (!activeClientUid) {
+			return;
+		}
 
-	if (!currentUser) {
-		return null;
-	}
+		void loadMessages();
+		const intervalId = window.setInterval(() => {
+			void loadMessages();
+		}, 2000);
+
+		return () => {
+			window.clearInterval(intervalId);
+		};
+	}, [activeClientUid, loadMessages]);
+
+	const renderedMessages = useMemo<ChatMessageItem[]>(() => {
+		const formatter = new Intl.DateTimeFormat(undefined, {
+			hour: "numeric",
+			minute: "2-digit",
+		});
+		const currentUid = activeClientUid;
+
+		return [...chatMessages]
+			.sort((a, b) => {
+				const aMs = a.createdAt?.toDate()?.getTime() ?? 0;
+				const bMs = b.createdAt?.toDate()?.getTime() ?? 0;
+				return aMs - bMs;
+			})
+			.map((item) => {
+				const isOwn = item.uid === currentUid;
+				return {
+					id: item.id,
+					text: item.message,
+					senderLabel: isOwn ? "Me" : "Counselor",
+					timeLabel: item.createdAt ? formatter.format(item.createdAt.toDate()) : "",
+					isOwn,
+				};
+			});
+	}, [activeClientUid, chatMessages]);
 
 	async function sendMessage() {
 		if (!db) {
 			setStatus("Firestore not configured.");
 			return;
 		}
-		if (!currentUser) {
-			setStatus("Please sign in on home page first.");
+		if (!activeClientUid) {
+			setStatus("Preparing guest session...");
 			return;
 		}
 
 		try {
+			setIsSending(true);
 			await addDoc(collection(db, "chat_messages"), {
 				message,
-				uid: currentUser.uid,
-				source: "client_page",
+				uid: activeClientUid,
+				clientUid: activeClientUid,
+				source: currentUser ? "client_page" : "guest_client_page",
+				channelType: "client",
 				createdAt: serverTimestamp(),
 			});
 			setStatus("Message sent.");
@@ -92,52 +150,24 @@ export default function ClientChatPage() {
 			await loadMessages();
 		} catch (error) {
 			setStatus(error instanceof Error ? error.message : "Failed to send message.");
+		} finally {
+			setIsSending(false);
 		}
 	}
 
 	return (
 		<main className="mx-auto min-h-screen w-full max-w-4xl px-6 py-12">
-			<h1 className="text-3xl font-semibold">Client Chat Test</h1>
-			<p className="mt-2 text-sm text-foreground/70">
-				Route check for client channel. URL: /chat
-			</p>
-
-			<section className="mt-6 rounded-xl border border-black/10 p-4 dark:border-white/10">
-				<p className="text-sm">Firebase ready: {canUseFirebase ? "Yes" : "No"}</p>
-				<p className="text-sm">Signed in user: {currentUser?.email ?? "none"}</p>
-			</section>
-
-			<section className="mt-4 rounded-xl border border-black/10 p-4 dark:border-white/10">
-				<label className="text-sm font-medium">Test Message</label>
-				<textarea
-					className="mt-2 w-full rounded-md border border-black/15 px-3 py-2"
-					rows={3}
-					value={message}
-					onChange={(event) => setMessage(event.target.value)}
-					placeholder="Type a message..."
-				/>
-				<div className="mt-3 flex gap-2">
-					<button className="rounded-md border px-3 py-2" onClick={sendMessage}>
-						Send
-					</button>
-					<button className="rounded-md border px-3 py-2" onClick={loadMessages}>
-						Reload
-					</button>
-				</div>
-			</section>
-
-			<section className="mt-4 rounded-xl border border-black/10 p-4 dark:border-white/10">
-				<p className="text-sm font-medium">Recent chat_messages</p>
-				<ul className="mt-2 space-y-2 text-sm">
-					{chatMessages.map((item) => (
-						<li key={item.id} className="rounded border border-black/10 p-2 dark:border-white/10">
-							<span className="font-medium">{item.uid}</span>: {item.message || "(empty)"}
-						</li>
-					))}
-				</ul>
-			</section>
-
-			<p className="mt-4 rounded-md bg-black/5 px-3 py-2 text-xs dark:bg-white/10">Status: {status}</p>
+			<ChatWindow
+				title={currentUser ? "Client Chat" : "Guest Chat"}
+				statusText={`Firebase: ${canUseFirebase ? "ready" : "not configured"} • ${status}`}
+				messages={renderedMessages}
+				inputValue={message}
+				onInputChange={setMessage}
+				onSend={sendMessage}
+				onReload={loadMessages}
+				isSending={isSending}
+				emptyText="No client messages yet."
+			/>
 		</main>
 	);
 }
