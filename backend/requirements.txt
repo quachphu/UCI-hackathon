@@ -1,0 +1,6 @@
+uvicorn==0.41.0
+langchain==1.2.10
+langchain-community==0.4.1
+python-dotenv==1.2.1
+fastapi==0.134.0
+langchain-ollama==1.0.1
