@@ -1,5 +1,4 @@
 from langchain_openai import ChatOpenAI
-from langchain_ollama import ChatOllama
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_community.chat_message_histories import ChatMessageHistory
@@ -10,12 +9,7 @@ class Model:
                     model="gpt-4o-mini",
                     temperature=0.3,
                     openai_api_key=api_key,
-                    ) if api_key else ChatOllama(
-                    model="llama3.2",         
-                    temperature=0.2,
-                    num_ctx=1000,
-                    base_url="http://localhost:11434"
-                    )
+                    ) 
         
         self.prompt_template = ChatPromptTemplate.from_messages(
             [
