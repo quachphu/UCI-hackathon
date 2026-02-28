@@ -26,7 +26,7 @@ async def chat(req: ChatRequest):
     return result
 
 
-@llm_router.post("/chat/stream")
+@llm_router.post("/stream")
 async def chat_stream(req: ChatRequest):
     """
     Returns chunks of the AI response one at a time via Server-Sent Events.
