@@ -1,10 +1,10 @@
-import os
-from app.model.model import Model
+from backend.app.model.llm import Model
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_community.chat_message_histories import ChatMessageHistory
+import time 
 
 load_dotenv()
 
@@ -15,6 +15,7 @@ SYSTEM = """You are a crisis counseling AI chatbot assistant for 988 hotline.
 _model = Model(
     template=SYSTEM,
 )
+# _model.get_response('warmup','-')
 
 
 # Public API
@@ -24,6 +25,7 @@ async def get_response(user_input: str, session_id: str = "default") -> dict:
     Conversation history is maintained per session_id.
     """
     response = await _model.get_response(user_input=user_input, session_id=session_id)
+
 
     return {"response": response, "session_id": session_id}
 
@@ -38,6 +40,7 @@ async def stream_response(user_input: str, session_id: str = "default"):
     ):
         if chunk:
             yield chunk
+
 
 
 async def get_chat_history(session_id: str) -> list[dict]:
