@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { ChatMessageItem } from "@/app/components/chat/MessageList";
 import MessageList from "@/app/components/chat/MessageList";
 import MessageInput from "@/app/components/chat/MessageInput";
@@ -59,6 +59,13 @@ export default function CounselorChatPanel({
 	dateSeparator,
 	headerActions,
 }: CounselorChatPanelProps) {
+	const [isConfirmingTakeover, setIsConfirmingTakeover] = useState(false);
+
+	// Reset confirmation when handler mode changes or client changes
+	if (handlerMode === "counselor") {
+		if (isConfirmingTakeover) setIsConfirmingTakeover(false);
+	}
+
 	if (!selectedClientUid) {
 		return (
 			<div className="flex h-full items-center justify-center bg-[#0f1724]">
@@ -107,13 +114,38 @@ export default function CounselorChatPanel({
 			{/* Handler info banner */}
 			<div className="shrink-0 px-4 pt-3">
 				{handlerMode === "ai" ? (
-					<InfoBanner
-						text="AI is currently handling this conversation"
-						variant="ai"
-						actionLabel="Take over chat"
-						onAction={onTakeOver}
-						actionDisabled={isUpdatingHandlerMode}
-					/>
+					<>
+						<InfoBanner
+							text="AI is currently handling this conversation"
+							variant="ai"
+							actionLabel="Take over chat"
+							onAction={() => setIsConfirmingTakeover(true)}
+							actionDisabled={isUpdatingHandlerMode || isConfirmingTakeover}
+						/>
+						{isConfirmingTakeover && (
+							<div className="mt-2 flex items-center gap-3 rounded-lg border border-[#2a4a6f] bg-[#1e3a5f]/40 px-4 py-2.5">
+								<span className="text-sm text-[#c4cad8]">Are you sure you want to take over?</span>
+								<button
+									type="button"
+									onClick={() => {
+										onTakeOver();
+										setIsConfirmingTakeover(false);
+									}}
+									disabled={isUpdatingHandlerMode}
+									className="shrink-0 rounded-lg bg-linear-to-b from-[#7c67ff] to-[#5b38f5] px-3 py-1.5 text-xs font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+								>
+									Yes, take over
+								</button>
+								<button
+									type="button"
+									onClick={() => setIsConfirmingTakeover(false)}
+									className="shrink-0 rounded-lg border border-[#2a3545] px-3 py-1.5 text-xs font-semibold text-[#8b93a7] transition-colors hover:bg-[#243044]"
+								>
+									Cancel
+								</button>
+							</div>
+						)}
+					</>
 				) : (
 					<InfoBanner
 						text="You are handling this conversation"

@@ -318,30 +318,44 @@ export default function CounselorPage() {
 
 	useEffect(() => {
 		if (!db || !isAdminAuthenticated || !selectedClientUid) {
-			setSelectedHandlerMode("counselor");
-			setHandlerModeStatus("Counselor handles replies by default.");
+			setSelectedHandlerMode("ai");
+			setHandlerModeStatus("AI handles replies by default.");
 			return;
 		}
 
 		const sessionRef = doc(db, "chat_sessions", selectedClientUid);
+
+		// Reset handler mode to AI every time a client is selected / page loads.
+		// Firestore SDK applies this locally before the snapshot fires, so no flash.
+		void setDoc(
+			sessionRef,
+			{
+				clientUid: selectedClientUid,
+				handlerMode: "ai",
+				changedBy: adminUid,
+				changedAt: serverTimestamp(),
+			},
+			{ merge: true },
+		);
+
 		const unsubscribe = onSnapshot(
 			sessionRef,
 			(snapshot) => {
 				if (!snapshot.exists()) {
-					setSelectedHandlerMode("counselor");
-					setHandlerModeStatus("Counselor handles replies by default.");
+					setSelectedHandlerMode("ai");
+					setHandlerModeStatus("AI handles replies by default.");
 					return;
 				}
 
 				const data = snapshot.data() as Partial<ChatSessionControl>;
-				const mode = data.handlerMode === "ai" ? "ai" : "counselor";
+				const mode = data.handlerMode === "counselor" ? "counselor" : "ai";
 				setSelectedHandlerMode(mode);
 				setHandlerModeStatus(
 					mode === "counselor" ? "Counselor is handling replies." : "AI is handling replies.",
 				);
 			},
 			(error) => {
-				setSelectedHandlerMode("counselor");
+				setSelectedHandlerMode("ai");
 				setHandlerModeStatus(error.message || "Failed to load handler mode.");
 			},
 		);
