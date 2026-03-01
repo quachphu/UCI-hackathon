@@ -150,8 +150,7 @@ export default function CounselorChatPanel({
 							<RiskBadge level={riskLevel} />
 						</div>
 						<p className="text-[11px] text-[#8b93a7]">
-							{startTime ? `Started ${startTime}` : ""}{" "}
-							{messageCount > 0 ? `· ${messageCount} messages` : ""}
+							{startTime ? `Started ${startTime}` : ""}
 						</p>
 					</div>
 				</div>
@@ -241,10 +240,6 @@ export default function CounselorChatPanel({
 				/>
 			</div>
 
-			{/* Status bar */}
-			<div className="shrink-0 border-t border-[#2a3545] px-4 py-1.5">
-				<p className="text-[11px] text-[#64748b]">{statusText}</p>
-			</div>
 		</div>
 	);
 }
