@@ -439,7 +439,7 @@ export default function ClientChatPage() {
 	}
 
 	return (
-		<main className="mx-auto min-h-screen w-full max-w-4xl px-6 py-12">
+		<main className="mx-auto flex h-full w-full max-w-4xl flex-col px-6 py-6">
 			<ChatWindow
 				title={currentUser ? "Client Chat" : "Guest Chat"}
 				statusText={`Firebase: ${canUseFirebase ? "ready" : "not configured"} • ${listenerStatusText} • ${handlerStatusText}${status !== "Ready" ? ` • ${status}` : ""}`}

@@ -7,7 +7,17 @@ import MessageInput from "@/app/components/chat/MessageInput";
 import RiskBadge, { type RiskLevel } from "./RiskBadge";
 import InfoBanner from "./InfoBanner";
 import DateSeparator from "./DateSeparator";
+import SummaryNoteCard, { type SummaryData } from "./SummaryNoteCard";
 import type { HandlerMode } from "@/lib/chat-types";
+
+/** Normalise a free-form risk string from the API to the RiskLevel union */
+function toRiskLevel(raw: string | undefined): RiskLevel {
+	const normalised = (raw ?? "").trim().toLowerCase();
+	if (normalised === "critical" || normalised === "high" || normalised === "medium" || normalised === "low") {
+		return normalised;
+	}
+	return "low";
+}
 
 type CounselorChatPanelProps = {
 	/** Currently selected client UID (empty = no selection) */
@@ -40,6 +50,8 @@ type CounselorChatPanelProps = {
 	dateSeparator?: string;
 	/** Additional header actions */
 	headerActions?: ReactNode;
+	/** Called when the risk level changes (e.g. after a summary is fetched) */
+	onRiskLevelChange?: (level: RiskLevel) => void;
 };
 
 export default function CounselorChatPanel({
@@ -58,8 +70,10 @@ export default function CounselorChatPanel({
 	statusText,
 	dateSeparator,
 	headerActions,
+	onRiskLevelChange,
 }: CounselorChatPanelProps) {
 	const [isConfirmingTakeover, setIsConfirmingTakeover] = useState(false);
+	const [showSummary, setShowSummary] = useState(false);
 
 	// ── Auto-scroll logic ──────────────────────────────────────────
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -88,6 +102,11 @@ export default function CounselorChatPanel({
 		prevMessageCountRef.current = messages.length;
 	}, [messages.length]);
 
+	// Close summary card when switching clients
+	useEffect(() => {
+		setShowSummary(false);
+	}, [selectedClientUid]);
+
 	// Reset confirmation when handler mode changes or client changes
 	if (handlerMode === "counselor") {
 		if (isConfirmingTakeover) setIsConfirmingTakeover(false);
@@ -107,7 +126,18 @@ export default function CounselorChatPanel({
 	}
 
 	return (
-		<div className="flex h-full flex-col bg-[#0f1724]">
+		<div className="relative flex h-full flex-col overflow-hidden bg-[#0f1724]">
+			{/* Summary overlay */}
+			{showSummary && (
+				<SummaryNoteCard
+					sessionId={selectedClientUid}
+					onClose={() => setShowSummary(false)}
+					onSummaryLoaded={(summary: SummaryData) => {
+						onRiskLevelChange?.(toRiskLevel(summary.risk_level));
+					}}
+				/>
+			)}
+
 			{/* Chat header */}
 			<header className="flex shrink-0 items-center justify-between border-b border-[#2a3545] px-5 py-3">
 				<div className="flex items-center gap-3">
@@ -129,7 +159,13 @@ export default function CounselorChatPanel({
 				<div className="flex items-center gap-2">
 					{headerActions ?? (
 						<>
-							<HeaderIconButton icon="📋" />
+							<button
+								type="button"
+								onClick={() => setShowSummary(true)}
+								className="flex h-8 items-center gap-1.5 rounded-lg border border-[#2a3545] px-3 text-xs font-semibold text-[#8b93a7] transition-colors hover:bg-[#243044] hover:text-white"
+							>
+								📋 Summary
+							</button>
 							<HeaderIconButton icon="📎" className="text-[#5b6fff]" />
 							<HeaderIconButton icon="🔗" />
 							<HeaderIconButton icon="🔴" className="text-[#ef4444]" />

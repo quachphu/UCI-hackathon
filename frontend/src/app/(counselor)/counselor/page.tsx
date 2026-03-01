@@ -19,6 +19,7 @@ import CounselorSidebar, {
 } from "@/app/components/couselor/CounselorSidebar";
 import CounselorChatPanel from "@/app/components/couselor/CounselorChatPanel";
 import type { ChatMessageItem } from "@/app/components/chat/MessageList";
+import type { RiskLevel } from "@/app/components/couselor/RiskBadge";
 import type { HandlerMode } from "@/lib/chat-types";
 import { db } from "@/lib/firebase";
 
@@ -76,6 +77,7 @@ export default function CounselorPage() {
 	const [isUpdatingHandlerMode, setIsUpdatingHandlerMode] = useState(false);
 	const [handlerModeStatus, setHandlerModeStatus] = useState("AI handles replies by default.");
 	const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+	const [riskLevels, setRiskLevels] = useState<Record<string, RiskLevel>>({});
 	const seenClientMessageIdsRef = useRef<Set<string>>(new Set());
 	const didInitializeSeenClientMessagesRef = useRef(false);
 
@@ -556,7 +558,7 @@ export default function CounselorPage() {
 
 	return (
 		<main className="h-screen overflow-hidden">
-			<div className="grid h-full grid-cols-1 md:grid-cols-[300px_1fr]">
+			<div className="grid h-full grid-cols-1 grid-rows-[1fr] md:grid-cols-[300px_1fr]">
 				<CounselorSidebar
 					onSignOut={handleAdminLogout}
 					statusText={statusBannerText}
@@ -581,7 +583,10 @@ export default function CounselorPage() {
 					onTakeOver={() => void updateHandlerMode("counselor")}
 					messageCount={selectedThread.length}
 					startTime={conversationStartTime}
-					riskLevel="low"
+					riskLevel={riskLevels[selectedClientUid] ?? "low"}
+					onRiskLevelChange={(level) =>
+						setRiskLevels((prev) => ({ ...prev, [selectedClientUid]: level }))
+					}
 					statusText={`${selectedThread.length} messages loaded · Session active`}
 					dateSeparator={dateSeparator}
 				/>

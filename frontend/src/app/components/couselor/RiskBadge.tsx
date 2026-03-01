@@ -1,6 +1,6 @@
 "use client";
 
-export type RiskLevel = "low" | "medium" | "high";
+export type RiskLevel = "low" | "medium" | "high" | "critical";
 
 type RiskBadgeProps = {
 	level: RiskLevel;
@@ -10,6 +10,7 @@ const RISK_STYLES: Record<RiskLevel, { bg: string; dot: string; label: string }>
 	low: { bg: "bg-[#22c55e]/15 text-[#22c55e]", dot: "bg-[#22c55e]", label: "LOW RISK" },
 	medium: { bg: "bg-[#f59e0b]/15 text-[#f59e0b]", dot: "bg-[#f59e0b]", label: "MEDIUM RISK" },
 	high: { bg: "bg-[#ef4444]/15 text-[#ef4444]", dot: "bg-[#ef4444]", label: "HIGH RISK" },
+	critical: { bg: "bg-[#dc2626]/15 text-[#dc2626]", dot: "bg-[#dc2626]", label: "CRITICAL RISK" },
 };
 
 export default function RiskBadge({ level }: RiskBadgeProps) {
