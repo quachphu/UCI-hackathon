@@ -1,52 +1,77 @@
-from app.model.stt import AssemblyAIStreamerTwilio
-from fastapi import WebSocketDisconnect
-import os
-import json
-import base64
 import asyncio
-import dotenv
+import base64
+import json
+import logging
 
-dotenv.load_dotenv()
+from app.service.stt_service import transcribe_stream_mulaw
+from app.service.tts_service import synthesize_speech
+from app.service.llm_service import stream_response
 
-async def stream_and_transcribe(ws,model):
-    await ws.accept()
+logger = logging.getLogger(__name__)
+
+SENTENCE_ENDINGS = {".", "!", "?", "\n"}
 
 
-    # Run start() in a thread — it calls connect() which blocks
-    loop = asyncio.get_event_loop()
-    aai_streamer = AssemblyAIStreamerTwilio(api_key=os.getenv("ASSEMBLYAI_API_KEY", ""),
-                                            model=model,
-                                            loop = loop)
-    await loop.run_in_executor(None, aai_streamer.start)
+async def stream_and_transcribe(ws, model):
+    """
+    Core Twilio stream handler.
+    Receives audio → STT → LLM → TTS → sends audio back to caller.
+    """
+    audio_queue = asyncio.Queue()
+    stream_sid = None
 
-    try:
-        while True:
-            msg = await ws.receive_text()
-            data = json.loads(msg)
-
-            event = data.get("event")
-            if event == "start":
-                start = data.get("start", {})
-                print(f"[Twilio] start: streamSid={start.get('streamSid')}")
-
-            elif event == "media":
-                media = data.get("media", {})
-                payload_b64 = media.get("payload")
-                if payload_b64:
-                    audio_bytes = base64.b64decode(payload_b64)
-                    aai_streamer.send_audio(audio_bytes)
-
-            elif event == "stop":
-                print("[Twilio] stop received")
-                break
-
-    except WebSocketDisconnect:
-        print("[Twilio] WebSocket disconnected")
-    except Exception as e:
-        print("[Server] Error:", e)
-    finally:
-        aai_streamer.stop()
+    async def _receive():
+        nonlocal stream_sid
         try:
-            await ws.close()
-        except Exception:
-            pass
+            while True:
+                message = await ws.receive_text()
+                data = json.loads(message)
+                event = data.get("event")
+
+                if event == "start":
+                    stream_sid = data["start"]["streamSid"]
+                    logger.info("Stream started: %s", stream_sid)
+
+                elif event == "media":
+                    audio_bytes = base64.b64decode(data["media"]["payload"])
+                    await audio_queue.put(audio_bytes)
+
+                elif event == "stop":
+                    await audio_queue.put(None)
+                    break
+        except Exception as e:
+            logger.error("Receive error: %s", e)
+            await audio_queue.put(None)
+
+    receive_task = asyncio.create_task(_receive())
+
+    sentence_buffer = ""
+
+    async for transcript, is_final in transcribe_stream_mulaw(audio_queue):
+        logger.info("Transcript [final=%s]: %s", is_final, transcript)
+
+        if is_final and transcript.strip():
+            async for token in stream_response(transcript, session_id="twilio"):
+                sentence_buffer += token
+
+                if any(sentence_buffer.endswith(p) for p in SENTENCE_ENDINGS):
+                    await _speak(ws, stream_sid, sentence_buffer.strip())
+                    sentence_buffer = ""
+
+            if sentence_buffer.strip():
+                await _speak(ws, stream_sid, sentence_buffer.strip())
+                sentence_buffer = ""
+
+    receive_task.cancel()
+
+
+async def _speak(ws, stream_sid: str, text: str):
+    """Convert text to mulaw audio and send back to Twilio caller."""
+    if not text.strip():
+        return
+    audio_bytes = await synthesize_speech(text, audio_encoding="MULAW")
+    payload = base64.b64encode(audio_bytes).decode("utf-8")
+    await ws.send_json(
+        {"event": "media", "streamSid": stream_sid, "media": {"payload": payload}}
+    )
+    logger.info("Spoke to caller: %s", text)

@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "ivory-oarlock-474002-p8",
+  "private_key_id": "b7610f43ad577992580ae65216026c2bb0c3fd83",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQC7OfprdaWtEVh1\nx0J4UI7IDgM0R7wczThx45B/L7mJFiBIMjYRH0rlx2XnXwFAZq151tdyaUtAdkx6\n3+C/zm7PhyPS7iXWUucVfpYGXTSV8d70uq6EOonVCQYPyYCutouOCpywCAUCueU/\nju83OdhHTYVvfwrYQ4bAM3hok3Xqp345LZA1zcJzqoedHTZypqLK60jdmDuLymWF\n8yljF4Qh/xr/EVnCoHyW/G1WG/xcahex5RDSR0eqMKUGC3ny4HFIHfuUbX/i5j+Y\nbY21ZotixUPQAwvZ0x/EpHifDlG5BgLfE1nAtYX3rA2k2Z9MH/9flzZcoY97m6/u\n/CcmpgK1AgMBAAECggEAI1dAmpewwBAx4TuNY74bEY65kp0G2G3xfWf9/tAQptyP\nF+modIdyYRjINsojZ5dqIAFKlk1jV8XszlXjq/kIyDIjdD2hVUk9VvyXz5g45KPt\nGMeDSTDukxC6vPClknUhNxzwMjc1UOwrpplxtLw9w8nRifgSYTuv3ChrDlxlafdE\nqksW/zmYYjBHWIQq0XUacl2gmt32FXvap1jAzz//KFrUfB3ppzq8peimzeix+L6e\nEA8cxhyP/ku7RehzhFK/rm9iMlrUahx99SkNLYRuveJMcprkzaCNAQsMmjSEiW1s\nHml7PC8zDiWhdbX/5MCJ1dpQo/B1cOXY7AZ4k51v+QKBgQDgacspHf7b7asH/6uc\n8vjwvDQAgAN5GcA96zxIscDij4g8WOu6HVPah3GkxQfqKd6lxd11zXmrmQj7NvV4\noVl9s0X1cfbSzhKKFoGndYZaihWg2PXE7tO1qWNhJZ8+wgSIfGh6pny2HK3N6mOi\n0+ITRhjHcJvL0zKqE8gIOQsD/QKBgQDVlD7+lksFTMKkWIxNrblmY/6JrlfXuaW0\nC4eNcis7jHlDYMcX1qrHFEevG1BtcuK3KmHYVzm5H9Ev2z/W7nhOI76n1Rk+DeGE\nAR3nko+42zBwepoAzRkSgcVn7WE25q3XqBaof3lGHUWpYSrO2YvelrMdeGsywvhd\nCZYQM93LGQKBgQDYxThqYkARnvUrh8r0kzrmB1XP+dfg/X/WD8kuiw0/i9fUOyyQ\nnc2m9FhRCcXIamNYC9YM+csCd5PWXdMlj+3K3wW/vjLmlAoSewUIhhyejm2v7oMQ\nlIXKH3IQn+/ABleso0ek2fbzTqaQlk1iNntVlMtQszS64So6YVtCnh9G3QKBgQDM\nJdaM3LW6zCNkmesKONr1XvEnQ0ldv2r/DOI1toJSejRSzgef5qX4go7+dnpLE7xX\nXiCGfOGE7T+zobuEww6lig8sN0nYgcYkujiOaA4OoRzM9rOLvn+PrBE4BLOemaJj\nd5yo1Kfj+AjlHSag71p9mch9i+PTcn+Z1pbkx97hyQKBgQCBHQS6KWuqCx+ggs9s\nBgN95DPLw7SQZvhykNKb/EeO/1ec8uKvkiI+D5Yj0h9IFl8D5Yy7um6OBM/yIzCS\n87lwuWmpxSX9BWAp8eovemI5UN3bNRK7AbylONRoT9B4RNfmcLG6bqUcJHKtAMud\nRkeWYDRIDM8P2u3cmXq5RjOEnA==\n-----END PRIVATE KEY-----\n",
+  "client_email": "speech-sa@ivory-oarlock-474002-p8.iam.gserviceaccount.com",
+  "client_id": "118041239126663815265",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/speech-sa%40ivory-oarlock-474002-p8.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}

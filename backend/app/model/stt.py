@@ -1,81 +1,87 @@
-import threading, asyncio
-import assemblyai as aai
-from assemblyai.streaming.v3 import (
-    StreamingClient, StreamingClientOptions, StreamingParameters,
-    StreamingEvents, BeginEvent, TurnEvent, TerminationEvent, StreamingError
+import asyncio
+from fastapi import (
+    APIRouter,
+    Response,
+    UploadFile,
+    File,
+    Form,
+    WebSocket,
+    WebSocketDisconnect,
 )
+from app.service.stt_service import transcribe_audio, transcribe_stream
+from app.service.llm_service import get_response, stream_response
 
-TWILIO_SAMPLE_RATE = 8000  
-BYTES_PER_MS = TWILIO_SAMPLE_RATE // 1000  
-BUFFER_MS = 100                            
-BUFFER_BYTES = BUFFER_MS * BYTES_PER_MS     
+stt_router = APIRouter()
 
-class AssemblyAIStreamerTwilio(StreamingClient):
-    def __init__(self, api_key: str,model,loop):
-        super().__init__(StreamingClientOptions(api_key=api_key, api_host="streaming.assemblyai.com"))
 
-        self.model = model
+@stt_router.post("/voice-chat")
+async def voice_chat(
+    audio: UploadFile = File(...), session_id: str = Form(default="1")
+):
+    """
+    Batch endpoint: upload a complete audio file, get transcript + AI response.
+    """
+    audio_bytes = await audio.read()
+    transcript, stt_time = await transcribe_audio(audio_bytes)
+    ai_result = await get_response(transcript, session_id)
 
-        self.on(StreamingEvents.Begin, self.on_begin)
-        self.on(StreamingEvents.Turn, self.on_turn)
-        self.on(StreamingEvents.Termination, self.on_terminated)
-        self.on(StreamingEvents.Error, self.on_error)
+    return {
+        "transcript": transcript,
+        "ai_response": ai_result["response"],
+        "session_id": session_id,
+        "transcription_time_seconds": stt_time,
+    }
 
-        self._buf = bytearray()
-        self._lock = threading.Lock()
-        self._loop = loop
-        self._active = False
 
-    def start(self):
-        params = StreamingParameters(
-            sample_rate=TWILIO_SAMPLE_RATE,              
-            encoding=aai.AudioEncoding.pcm_mulaw,        
-            format_turns=True,
+@stt_router.websocket("/stream")
+async def stream_voice(websocket: WebSocket):
+    """
+    Real-time streaming STT via WebSocket.
+
+    Connect: ws://localhost:4000/stt/stream?session_id=1
+
+    Client sends:
+      - Raw PCM audio bytes (mono, 16-bit, 16000 Hz) as binary frames
+      - A text frame "END" to signal end of speech
+
+    Server sends JSON messages:
+      {"type": "transcript", "text": "...", "is_final": false}  ← live caption
+      {"type": "transcript", "text": "...", "is_final": true}   ← confirmed sentence
+      {"type": "ai_token",   "text": "..."}                     ← LLM token (streaming)
+      {"type": "ai_done"}                                        ← LLM turn finished
+
+    Key: LLM reply starts streaming immediately after each confirmed sentence,
+    NOT after the entire speech ends — this cuts perceived latency dramatically.
+    """
+    await websocket.accept()
+    session_id = websocket.query_params.get("session_id", "1")
+
+    audio_queue: asyncio.Queue = asyncio.Queue()
+
+    async def _receive_audio():
+        try:
+            while True:
+                message = await websocket.receive()
+                if "bytes" in message:
+                    await audio_queue.put(message["bytes"])
+                elif message.get("text") == "END":
+                    await audio_queue.put(None)
+                    break
+        except WebSocketDisconnect:
+            await audio_queue.put(None)
+
+    receive_task = asyncio.create_task(_receive_audio())
+
+    async for text, is_final in transcribe_stream(audio_queue):
+        await websocket.send_json(
+            {"type": "transcript", "text": text, "is_final": is_final}
         )
-        self._active = True
-        self.connect(params)
 
-    def send_audio(self, mulaw_bytes: bytes):
-        if not self._active:
-            return
+        # ← KEY CHANGE: respond after each final sentence, stream tokens immediately
+        if is_final:
+            async for token in stream_response(text, session_id):
+                await websocket.send_json({"type": "ai_token", "text": token})
+            await websocket.send_json({"type": "ai_done"})
 
-        with self._lock:
-            self._buf.extend(mulaw_bytes)
-
-            # flush in >=100ms chunks
-            while len(self._buf) >= BUFFER_BYTES:
-                chunk = bytes(self._buf[:BUFFER_BYTES])
-                del self._buf[:BUFFER_BYTES]
-                self.stream(chunk)  # v3: stream(bytes)
-
-    def stop(self):
-        self._active = False
-        with self._lock:
-            if self._buf:
-                # only send remainder if it meets minimum (50ms = 400 bytes)
-                if len(self._buf) >= 50 * BYTES_PER_MS:
-                    self.stream(bytes(self._buf))
-                self._buf.clear()
-        self.disconnect(terminate=True)
-
-    # ---- callbacks ----
-    def on_begin(self, client: "StreamingClient", event: BeginEvent):
-        print(f"[AssemblyAI] Session started: {event.id}")
-
-    def on_turn(self, client: "StreamingClient", event: TurnEvent):
-        if event.end_of_turn and event.turn_is_formatted:
-            txt = (event.transcript or "").strip()
-            if txt:
-                asyncio.run_coroutine_threadsafe(
-                    self._handle_turn(txt,1),self._loop
-                )
-
-    async def _handle_turn(self, txt: str, session_id: str):
-        response = await self.model.get_response(user_input=txt, session_id=session_id)
-        print(response)
-
-    def on_terminated(self, client: "StreamingClient", event: TerminationEvent):
-        print(f"[AssemblyAI] Session terminated ({event.audio_duration_seconds}s processed)")
-
-    def on_error(self, client: "StreamingClient", error: StreamingError):
-        print(f"[AssemblyAI] Error: {error}")
+    receive_task.cancel()
+    await websocket.close()

@@ -5,6 +5,12 @@ services:
     build:
       context: ./backend
       dockerfile: backend.dockerfile
+    env_file:
+      - .env
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/secrets/gcp-credentials.json
+    volumes:
+      - ./ivory-oarlock-474002-p8-b7610f43ad57.json:/secrets/gcp-credentials.json:ro
     ports:
       - "1000:1000"
   frontend:
