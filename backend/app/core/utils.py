@@ -8,7 +8,7 @@ def ws_connect_kwargs(headers: dict):
     return {"extra_headers": headers}
 
 
-async def buffer_to_phrases(token_stream, flush_chars=set(".?!\n"), max_chars=200):
+async def buffer_to_phrases(token_stream, flush_chars=set(".?!\n"), max_chars=40):
     """
     Buffers token stream into phrase-ish chunks.
     This makes speech smoother than sending single tokens.

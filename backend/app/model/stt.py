@@ -35,11 +35,38 @@ class AssemblyAIStreamerTwilio(StreamingClient):
             sample_rate=TWILIO_SAMPLE_RATE,              
             encoding=aai.AudioEncoding.pcm_mulaw,        
             format_turns=True,
-            speech_model = "universal-streaming-multilingual",
-            language_detection=True,
         )
         self._active = True
         self.connect(params)
+
+    async def _send_greeting(self):
+        """Send a greeting TTS message when the call begins."""
+        async def greeting_tokens():
+            yield '''Hello, welcome to CrisisLine, currently all crisis counselor are busy helping others!
+                        My name is Lily, I will help you stay accompanied.
+                        How can I help you today?'''
+        try:
+            async for audio_chunk in stream_tts_from_llm(greeting_tokens()):
+                payload = base64.b64encode(audio_chunk).decode("utf-8")
+                await self._ws.send_text(json.dumps({
+                    "event": "media",
+                    "streamSid": self._stream_sid,
+                    "media": {"payload": payload},
+                }))
+            await self._ws.send_text(json.dumps({
+                "event": "mark",
+                "streamSid": self._stream_sid,
+                "mark": {"name": "greeting_end"},
+            }))
+        except Exception as e:
+            print(f"[AssemblyAI] greeting error: {e}")
+
+    # ...existing code...
+
+    # ---- callbacks ----
+    def on_begin(self, client: "StreamingClient", event: BeginEvent):
+        print(f"[AssemblyAI] Session started: {event.id}")
+        asyncio.run_coroutine_threadsafe(self._send_greeting(), self._loop)
 
     def send_audio(self, mulaw_bytes: bytes):
         if not self._active:
@@ -65,8 +92,6 @@ class AssemblyAIStreamerTwilio(StreamingClient):
         self.disconnect(terminate=True)
 
     # ---- callbacks ----
-    def on_begin(self, client: "StreamingClient", event: BeginEvent):
-        print(f"[AssemblyAI] Session started: {event.id}")
 
     def on_turn(self, client: "StreamingClient", event: TurnEvent):
         if event.end_of_turn and event.turn_is_formatted:
@@ -78,18 +103,22 @@ class AssemblyAIStreamerTwilio(StreamingClient):
 
     async def _handle_turn(self, txt: str, session_id: str):
         try:
-            async for audio_chunk in stream_tts_from_llm(self.model.converse_stream(user_input=txt, session_id=session_id)):
-                     payload = base64.b64encode(audio_chunk).decode("utf-8")
-                     await self._ws.send_text(json.dumps({
-                        "event": "media",
-                        "streamSid": self._stream_sid,
-                        "media": {"payload": payload},
-                        }))
-                     await self._ws.send_text(json.dumps({
-                        "event": "mark",
-                        "streamSid": self._stream_sid,
-                        "mark": {"name": "response_end"},
-                    }))
+            async for audio_chunk in stream_tts_from_llm(
+                self.model.converse_stream(user_input=txt, session_id=session_id)
+            ):
+                payload = base64.b64encode(audio_chunk).decode("utf-8")
+                await self._ws.send_text(json.dumps({
+                    "event": "media",
+                    "streamSid": self._stream_sid,
+                    "media": {"payload": payload},
+                }))
+
+            # send once at end
+            await self._ws.send_text(json.dumps({
+                "event": "mark",
+                "streamSid": self._stream_sid,
+                "mark": {"name": "response_end"},
+            }))
         except Exception as e:
             print(f"[AssemblyAI] converse_stream error: {e}")
             raise

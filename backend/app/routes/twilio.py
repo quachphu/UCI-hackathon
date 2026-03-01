@@ -17,7 +17,6 @@ async def twilio_voice(request: Request):
 
     twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
         <Response>
-        <Say>Connecting you now.</Say>
         <Connect>
             <Stream url="{stream_url}">
                 <Parameter name="call_session_id" value="{call_session_id}" />
