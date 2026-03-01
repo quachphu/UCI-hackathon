@@ -398,9 +398,9 @@ export default function CounselorPage() {
 								</header>
 								{selectedClientUid ? (
 									<Agentchoices
+										key={`${selectedClientUid}:${selectedHandlerMode}:${isUpdatingHandlerMode}`}
 										mode={selectedHandlerMode}
 										disabled={isUpdatingHandlerMode}
-										onSelectAI={() => void updateHandlerMode("ai")}
 										onSelectCounselor={() => void updateHandlerMode("counselor")}
 										statusText={handlerModeStatus}
 									/>
