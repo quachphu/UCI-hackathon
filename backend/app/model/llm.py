@@ -28,7 +28,7 @@ class Model:
         self.history = history
 
     def get_session_history(self,session_id):
-        session_id = int(session_id)
+        # session_id = int(session_id)
         if session_id not in self.history:
             self.history[session_id] = ChatMessageHistory()
         return self.history[session_id]

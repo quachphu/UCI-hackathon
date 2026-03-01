@@ -4,14 +4,14 @@ from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_community.chat_message_histories import ChatMessageHistory
-
+import os
 load_dotenv()
 
 SYSTEM = '''You are a crisis counseling AI chatbot assistant for 988 hotline. 
             All of our counselors are busy assisting other. Be a companion, be empathetic. 
             Chat like you are having a conversation rather than giving information. Be concise.'''
 
-_model = Model(template = SYSTEM,)
+_model = Model(template = SYSTEM,api_key=os.getenv("OPENAI_API_KEY"))
 
 
 # Public API 

@@ -11,5 +11,8 @@ services:
     build:
       context: ./frontend
       dockerfile: frontend.dockerfile
+    environment:
+      - API_BASE_URL=http://backend:1000
+      - DOCKER_CONTAINER=true
     ports:
       - "3000:3000"

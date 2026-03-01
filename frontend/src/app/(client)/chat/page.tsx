@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	addDoc,
 	collection,
@@ -16,11 +16,10 @@ import {
 } from "firebase/firestore";
 import ChatWindow from "@/app/components/chat/ChatWindow";
 import type { ChatMessageItem } from "@/app/components/chat/MessageList";
+import { streamAIResponse as streamAITransport } from "@/lib/ai-stream";
 import type { HandlerMode } from "@/lib/chat-types";
 import { auth, db, isFirebaseConfigured } from "@/lib/firebase";
 import { useAuth } from "@/lib/auth-context";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:1000";
 
 type ChatMessage = {
 	id: string;
@@ -28,6 +27,10 @@ type ChatMessage = {
 	uid: string;
 	clientUid?: string;
 	createdAt?: Timestamp;
+	channelType?: "client" | "counselor" | "ai";
+	autoReplyNonce?: string;
+	responseToMessageId?: string;
+	source?: string;
 };
 
 type ListenerMode = "indexed" | "fallback";
@@ -37,6 +40,12 @@ type ChatSessionControl = {
 	handlerMode: HandlerMode;
 	changedBy?: string;
 	changedAt?: Timestamp;
+};
+
+type PersistedAIMessageOptions = {
+	autoReplyNonce?: string;
+	responseToMessageId?: string;
+	sourceOverride?: "ai_stream" | "ai_stream_auto_takeover";
 };
 
 function sortMessagesByTimestamp(items: ChatMessage[]): ChatMessage[] {
@@ -125,20 +134,28 @@ export default function ClientChatPage() {
 
 		const toMessages = (snapshot: QuerySnapshot<DocumentData>) => {
 			const items: ChatMessage[] = snapshot.docs.map((doc) => {
-				const d = doc.data() as {
-					message?: string;
-					uid?: string;
-					clientUid?: string;
-					createdAt?: Timestamp;
-				};
-				return {
-					id: doc.id,
-					message: d.message ?? "",
-					uid: d.uid ?? "unknown",
-					clientUid: d.clientUid,
-					createdAt: d.createdAt,
-				};
-			});
+					const d = doc.data() as {
+						message?: string;
+						uid?: string;
+						clientUid?: string;
+						createdAt?: Timestamp;
+						channelType?: "client" | "counselor" | "ai";
+						autoReplyNonce?: string;
+						responseToMessageId?: string;
+						source?: string;
+					};
+					return {
+						id: doc.id,
+						message: d.message ?? "",
+						uid: d.uid ?? "unknown",
+						clientUid: d.clientUid,
+						createdAt: d.createdAt,
+						channelType: d.channelType,
+						autoReplyNonce: d.autoReplyNonce,
+						responseToMessageId: d.responseToMessageId,
+						source: d.source,
+					};
+				});
 
 			return items;
 		};
@@ -216,17 +233,17 @@ export default function ClientChatPage() {
 			return;
 		}
 
-		const sessionRef = doc(db, "chat_sessions", activeClientUid);
-		const unsubscribe = onSnapshot(
-			sessionRef,
-			(snapshot) => {
+			const sessionRef = doc(db, "chat_sessions", activeClientUid);
+			const unsubscribe = onSnapshot(
+				sessionRef,
+				(snapshot) => {
 				if (!snapshot.exists()) {
 					setHandlerMode("counselor");
 					setHandlerModeError(undefined);
 					return;
 				}
 
-				const data = snapshot.data() as Partial<ChatSessionControl>;
+					const data = snapshot.data() as Partial<ChatSessionControl>;
 				if (data.handlerMode === "ai" || data.handlerMode === "counselor") {
 					setHandlerMode(data.handlerMode);
 					setHandlerModeError(undefined);
@@ -243,7 +260,7 @@ export default function ClientChatPage() {
 		);
 
 		return () => unsubscribe();
-	}, [activeClientUid]);
+		}, [activeClientUid]);
 
 	// If counselor takes over mid-stream, stop AI generation immediately.
 	useEffect(() => {
@@ -318,8 +335,8 @@ export default function ClientChatPage() {
 		return list;
 	}, [activeClientUid, chatMessages, isStreaming, streamingText]);
 
-	// ── Stream AI response via SSE ─────────────────────────────
-	async function streamAIResponse(userText: string) {
+	// ── Stream AI response via shared utility ───────────────────
+	const streamAIResponse = useCallback(async (userText: string, options?: PersistedAIMessageOptions) => {
 		setIsStreaming(true);
 		setStreamingText("");
 
@@ -329,47 +346,16 @@ export default function ClientChatPage() {
 		let wasAborted = false;
 
 		try {
-			const res = await fetch(`${API_BASE}/llm/stream`, {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					message: userText,
-					session_id: activeClientUid,
-				}),
+			const result = await streamAITransport(userText, activeClientUid, {
 				signal: controller.signal,
+				onToken: (_token, full) => {
+					setStreamingText(full);
+				},
 			});
-
-			if (!res.ok || !res.body) {
-				throw new Error(`Stream error ${res.status}`);
-			}
-
-			const reader = res.body.getReader();
-			const decoder = new TextDecoder();
-			let buffer = "";
-
-			while (true) {
-				const { done, value } = await reader.read();
-				if (done) break;
-
-				buffer += decoder.decode(value, { stream: true });
-				const lines = buffer.split("\n");
-				buffer = lines.pop() ?? "";
-
-				for (const line of lines) {
-					const trimmed = line.trim();
-					if (!trimmed.startsWith("data: ")) continue;
-					const payload = trimmed.slice(6);
-					if (payload === "[DONE]") continue;
-					fullText += payload;
-					setStreamingText(fullText);
-				}
-			}
+			fullText = result.fullText;
+			wasAborted = result.wasAborted;
 		} catch (err) {
-			if ((err as Error).name === "AbortError") {
-				wasAborted = true;
-			} else {
-				setStatus(`AI stream failed: ${(err as Error).message}`);
-			}
+			setStatus(`AI stream failed: ${(err as Error).message}`);
 		} finally {
 			setIsStreaming(false);
 			setStreamingText("");
@@ -379,19 +365,21 @@ export default function ClientChatPage() {
 		// Persist complete AI reply to Firestore
 		if (!wasAborted && fullText && db) {
 			try {
-				await addDoc(collection(db, "chat_messages"), {
-					message: fullText,
-					uid: "ai_counselor",
-					clientUid: activeClientUid,
-					source: "ai_stream",
-					channelType: "client",
-					createdAt: serverTimestamp(),
+					await addDoc(collection(db, "chat_messages"), {
+						message: fullText,
+						uid: "ai_counselor",
+						clientUid: activeClientUid,
+						source: options?.sourceOverride ?? "ai_stream",
+						channelType: "ai",
+						autoReplyNonce: options?.autoReplyNonce,
+						responseToMessageId: options?.responseToMessageId,
+						createdAt: serverTimestamp(),
 				});
 			} catch {
 				setStatus("Failed to save AI reply.");
 			}
 		}
-	}
+	}, [activeClientUid]);
 
 	// ── Send message handler ───────────────────────────────────
 	async function sendMessage() {
@@ -432,14 +420,14 @@ export default function ClientChatPage() {
 		}
 	}
 
-	return (
-		<main className="mx-auto min-h-screen w-full max-w-4xl px-6 py-12">
+		return (
+			<main className="mx-auto min-h-screen w-full max-w-4xl px-6 py-12">
 				<ChatWindow
 					title={currentUser ? "Client Chat" : "Guest Chat"}
 					statusText={`Firebase: ${canUseFirebase ? "ready" : "not configured"} • ${listenerStatusText} • ${handlerStatusText}${status !== "Ready" ? ` • ${status}` : ""}`}
-				messages={renderedMessages}
-				inputValue={message}
-				onInputChange={setMessage}
+					messages={renderedMessages}
+					inputValue={message}
+					onInputChange={setMessage}
 				onSend={sendMessage}
 				isSending={isSending || isStreaming}
 				emptyText="No messages yet. Say something to start chatting with the AI counselor."

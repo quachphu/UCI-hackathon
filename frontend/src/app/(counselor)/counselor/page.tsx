@@ -4,19 +4,23 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
 	addDoc,
 	collection,
+	deleteField,
 	doc,
 	getDocs,
 	limit,
 	onSnapshot,
+	orderBy,
 	query,
 	serverTimestamp,
 	setDoc,
+	where,
 	type Timestamp,
 } from "firebase/firestore";
 import Agentchoices from "@/app/components/couselor/Agentchoices";
 import ChatLog from "@/app/components/couselor/ChatLog";
 import type { ConversationRow } from "@/app/components/couselor/ChatLog";
 import Transcript from "@/app/components/couselor/Transcript";
+import { streamAIResponse } from "@/lib/ai-stream";
 import type { HandlerMode } from "@/lib/chat-types";
 import { db } from "@/lib/firebase";
 
@@ -32,6 +36,7 @@ type ChatMessage = {
 	clientUid?: string;
 	message: string;
 	createdAt?: Timestamp;
+	channelType?: "client" | "counselor" | "ai";
 };
 
 type ChatSessionControl = {
@@ -39,6 +44,10 @@ type ChatSessionControl = {
 	handlerMode: HandlerMode;
 	changedBy?: string;
 	changedAt?: Timestamp;
+	pendingAutoReplyMessageId?: string;
+	pendingAutoReplyText?: string;
+	autoReplyTriggerNonce?: string;
+	lastConsumedAutoReplyNonce?: string;
 };
 
 function inferClientUid(message: ChatMessage): string {
@@ -51,6 +60,10 @@ function inferClientUid(message: ChatMessage): string {
 	}
 
 	return "";
+}
+
+function messageTimestampMs(message: ChatMessage): number {
+	return message.createdAt?.toDate()?.getTime() ?? 0;
 }
 
 export default function CounselorPage() {
@@ -67,6 +80,7 @@ export default function CounselorPage() {
 	const [isSending, setIsSending] = useState(false);
 	const [selectedHandlerMode, setSelectedHandlerMode] = useState<HandlerMode>("counselor");
 	const [isUpdatingHandlerMode, setIsUpdatingHandlerMode] = useState(false);
+	const [isTakeoverStreaming, setIsTakeoverStreaming] = useState(false);
 	const [handlerModeStatus, setHandlerModeStatus] = useState("Counselor handles replies by default.");
 
 	const timeFormatter = useMemo(
@@ -116,22 +130,24 @@ export default function CounselorPage() {
 		setIsLoadingMessages(true);
 		try {
 			const snapshot = await getDocs(query(collection(db, "chat_messages"), limit(500)));
-			const items = snapshot.docs.map((doc) => {
-				const data = doc.data() as {
-					uid?: string;
-					clientUid?: string;
-					message?: string;
-					createdAt?: Timestamp;
-				};
+				const items = snapshot.docs.map((doc) => {
+					const data = doc.data() as {
+						uid?: string;
+						clientUid?: string;
+						message?: string;
+						createdAt?: Timestamp;
+						channelType?: "client" | "counselor" | "ai";
+					};
 
-				return {
-					id: doc.id,
-					uid: data.uid ?? "unknown",
-					clientUid: data.clientUid,
-					message: data.message ?? "",
-					createdAt: data.createdAt,
-				};
-			});
+					return {
+						id: doc.id,
+						uid: data.uid ?? "unknown",
+						clientUid: data.clientUid,
+						message: data.message ?? "",
+						createdAt: data.createdAt,
+						channelType: data.channelType,
+					};
+				});
 
 			setAllMessages(items);
 			setStatus(`Loaded ${items.length} message(s).`);
@@ -277,6 +293,72 @@ export default function CounselorPage() {
 			return;
 		}
 
+		let latestMessage: ChatMessage | undefined;
+		if (nextMode === "ai") {
+			setHandlerModeStatus("Checking latest message before AI takeover...");
+			try {
+				const latestSnapshot = await getDocs(
+					query(
+						collection(db, "chat_messages"),
+						where("clientUid", "==", selectedClientUid),
+						orderBy("createdAt", "desc"),
+						limit(1),
+					),
+				);
+				const latestDoc = latestSnapshot.docs.at(0);
+				if (latestDoc) {
+					const data = latestDoc.data() as {
+						uid?: string;
+						clientUid?: string;
+						message?: string;
+						createdAt?: Timestamp;
+						channelType?: "client" | "counselor" | "ai";
+					};
+					latestMessage = {
+						id: latestDoc.id,
+						uid: data.uid ?? "unknown",
+						clientUid: data.clientUid,
+						message: data.message ?? "",
+						createdAt: data.createdAt,
+						channelType: data.channelType,
+					};
+				}
+			} catch {
+				// Fallback when ordered query/index is unavailable.
+				try {
+					const snapshot = await getDocs(
+						query(collection(db, "chat_messages"), where("clientUid", "==", selectedClientUid), limit(500)),
+					);
+					const items = snapshot.docs.map((docSnap) => {
+						const data = docSnap.data() as {
+							uid?: string;
+							clientUid?: string;
+							message?: string;
+							createdAt?: Timestamp;
+							channelType?: "client" | "counselor" | "ai";
+						};
+						return {
+							id: docSnap.id,
+							uid: data.uid ?? "unknown",
+							clientUid: data.clientUid,
+							message: data.message ?? "",
+							createdAt: data.createdAt,
+							channelType: data.channelType,
+						} satisfies ChatMessage;
+					});
+					latestMessage = [...items].sort((a, b) => messageTimestampMs(a) - messageTimestampMs(b)).at(-1);
+				} catch {
+					latestMessage = selectedThread.at(-1);
+				}
+			}
+
+			if (!latestMessage) {
+				latestMessage = selectedThread.at(-1);
+			}
+		}
+
+		const shouldAutoRespond = nextMode === "ai" && latestMessage?.channelType === "client";
+
 		try {
 			setIsUpdatingHandlerMode(true);
 			await setDoc(
@@ -286,16 +368,44 @@ export default function CounselorPage() {
 					handlerMode: nextMode,
 					changedBy: ADMIN_UID,
 					changedAt: serverTimestamp(),
+					pendingAutoReplyMessageId: deleteField(),
+					pendingAutoReplyText: deleteField(),
+					autoReplyTriggerNonce: deleteField(),
 				},
 				{ merge: true },
 			);
-			setHandlerModeStatus(
-				nextMode === "counselor" ? "Counselor is handling replies." : "AI is handling replies.",
-			);
+			if (nextMode === "counselor") {
+				setHandlerModeStatus("Counselor is handling replies.");
+				return;
+			}
+
+			if (!shouldAutoRespond || !latestMessage?.message.trim()) {
+				setHandlerModeStatus("AI takeover enabled. Waiting for next client message.");
+				return;
+			}
+
+			setIsTakeoverStreaming(true);
+			setHandlerModeStatus("AI takeover enabled. Responding to latest client message.");
+			const result = await streamAIResponse(latestMessage.message, selectedClientUid);
+			if (!result.wasAborted && result.fullText.trim()) {
+				await addDoc(collection(db, "chat_messages"), {
+					message: result.fullText,
+					uid: "ai_counselor",
+					clientUid: selectedClientUid,
+					source: "ai_stream_auto_takeover",
+					channelType: "ai",
+					responseToMessageId: latestMessage.id,
+					createdAt: serverTimestamp(),
+				});
+				setHandlerModeStatus("AI takeover enabled. Responded to latest client message.");
+			} else {
+				setHandlerModeStatus("AI takeover enabled. Waiting for next client message.");
+			}
 		} catch (error) {
 			setHandlerModeStatus(error instanceof Error ? error.message : "Failed to update handler mode.");
 		} finally {
 			setIsUpdatingHandlerMode(false);
+			setIsTakeoverStreaming(false);
 		}
 	}
 
@@ -399,7 +509,7 @@ export default function CounselorPage() {
 								{selectedClientUid ? (
 									<Agentchoices
 										mode={selectedHandlerMode}
-										disabled={isUpdatingHandlerMode}
+										disabled={isUpdatingHandlerMode || isTakeoverStreaming}
 										onSelectAI={() => void updateHandlerMode("ai")}
 										onSelectCounselor={() => void updateHandlerMode("counselor")}
 										statusText={handlerModeStatus}

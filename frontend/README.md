@@ -20,6 +20,7 @@ cp .env.example .env.local
 Required variables:
 
 - `NEXT_PUBLIC_API_BASE_URL` (ex: `http://localhost:1000`)
+- `API_BASE_URL` (server-side Next API route upstream; for Docker use `http://backend:1000`)
 - `NEXT_PUBLIC_FIREBASE_API_KEY`
 - `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`
 - `NEXT_PUBLIC_FIREBASE_PROJECT_ID`
@@ -49,7 +50,14 @@ Required variables:
 	- Fields: `clientUid`, `handlerMode` (`"ai"` or `"counselor"`), `changedBy`, `changedAt`
 	- If document is missing, client defaults to counselor/manual mode.
 	- AI replies run only when counselor explicitly switches mode to `"ai"`.
+	- On counselor click (`Let AI take over`), app checks the latest message from Firestore:
+		- latest `channelType: "client"` => immediately runs one AI response against that latest client text.
+		- latest `channelType: "counselor"` or `"ai"` => no immediate AI call; waits for next client message.
 	- If counselor switches to counselor mode while AI is streaming, the in-flight AI stream is aborted.
+9. `chat_messages.channelType` semantics:
+	- Client user message: `"client"`
+	- Counselor manual message: `"counselor"`
+	- AI generated message: `"ai"`
 
 Firebase client initialization lives in `src/lib/firebase.ts`.
 
@@ -59,3 +67,4 @@ Firebase client initialization lives in `src/lib/firebase.ts`.
 - Backend should allow CORS for `http://localhost:3000`.
 - If you change `.env.local`, restart the dev server.
 - Firestore rules should allow client read access to their own `chat_sessions/{clientUid}` and counselor/admin write access to `handlerMode`.
+- In Docker/Compose, do not point `API_BASE_URL` to `localhost`; inside the frontend container, `localhost` is the frontend container itself. Use `http://backend:1000`.
