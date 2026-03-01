@@ -1,3 +1,6 @@
+"use client";
+
+import { useCallback, useEffect, useRef } from "react";
 import MessageInput from "./MessageInput";
 import MessageList, { type ChatMessageItem } from "./MessageList";
 
@@ -50,6 +53,32 @@ export default function ChatWindow({
 }: ChatWindowProps) {
 	const s = THEME_STYLES[theme];
 
+	// ── Auto-scroll logic ──────────────────────────────────────
+	const scrollContainerRef = useRef<HTMLDivElement>(null);
+	const bottomRef = useRef<HTMLDivElement>(null);
+	const isNearBottomRef = useRef(true);
+	const prevMessageCountRef = useRef(messages.length);
+
+	const handleScroll = useCallback(() => {
+		const el = scrollContainerRef.current;
+		if (!el) return;
+		isNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
+	}, []);
+
+	// Scroll to bottom on initial mount
+	useEffect(() => {
+		bottomRef.current?.scrollIntoView();
+		isNearBottomRef.current = true;
+	}, []);
+
+	// Scroll to bottom when new messages arrive (only if near bottom)
+	useEffect(() => {
+		if (messages.length > prevMessageCountRef.current && isNearBottomRef.current) {
+			bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+		}
+		prevMessageCountRef.current = messages.length;
+	}, [messages.length]);
+
 	return (
 		<section className={s.section}>
 			<header className={s.header}>
@@ -64,8 +93,9 @@ export default function ChatWindow({
 				</div>
 			</header>
 
-			<div className={s.body}>
+			<div ref={scrollContainerRef} onScroll={handleScroll} className={s.body}>
 				<MessageList messages={messages} emptyText={emptyText} theme={theme} />
+				<div ref={bottomRef} />
 			</div>
 
 			<footer className={s.footer}>

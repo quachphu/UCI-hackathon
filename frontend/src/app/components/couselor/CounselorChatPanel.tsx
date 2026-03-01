@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { ChatMessageItem } from "@/app/components/chat/MessageList";
 import MessageList from "@/app/components/chat/MessageList";
 import MessageInput from "@/app/components/chat/MessageInput";
@@ -60,6 +60,33 @@ export default function CounselorChatPanel({
 	headerActions,
 }: CounselorChatPanelProps) {
 	const [isConfirmingTakeover, setIsConfirmingTakeover] = useState(false);
+
+	// ── Auto-scroll logic ──────────────────────────────────────────
+	const scrollContainerRef = useRef<HTMLDivElement>(null);
+	const bottomRef = useRef<HTMLDivElement>(null);
+	const isNearBottomRef = useRef(true);
+	const prevMessageCountRef = useRef(messages.length);
+
+	const handleScroll = useCallback(() => {
+		const el = scrollContainerRef.current;
+		if (!el) return;
+		// Consider "near bottom" if within 150px of the bottom
+		isNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
+	}, []);
+
+	// Scroll to bottom on initial mount or when the selected client changes
+	useEffect(() => {
+		bottomRef.current?.scrollIntoView();
+		isNearBottomRef.current = true;
+	}, [selectedClientUid]);
+
+	// Scroll to bottom when new messages arrive (only if near bottom)
+	useEffect(() => {
+		if (messages.length > prevMessageCountRef.current && isNearBottomRef.current) {
+			bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+		}
+		prevMessageCountRef.current = messages.length;
+	}, [messages.length]);
 
 	// Reset confirmation when handler mode changes or client changes
 	if (handlerMode === "counselor") {
@@ -156,9 +183,14 @@ export default function CounselorChatPanel({
 			</div>
 
 			{/* Messages */}
-			<div className="flex-1 overflow-y-auto px-5 py-3">
+			<div
+				ref={scrollContainerRef}
+				onScroll={handleScroll}
+				className="min-h-0 flex-1 overflow-y-auto px-5 py-3"
+			>
 				{dateSeparator ? <DateSeparator text={dateSeparator} /> : null}
 				<MessageList messages={messages} emptyText="No messages yet." theme="dark" />
+				<div ref={bottomRef} />
 			</div>
 
 			{/* Input */}
