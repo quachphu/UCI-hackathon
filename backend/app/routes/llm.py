@@ -46,7 +46,5 @@ async def history(session_id: str,model:Model=Depends(get_model)):
 
 @llm_router.get("/summary/{session_id}")
 async def get_summary(session_id,model:Model=Depends(get_model)):
-    history = model.get_session_history(session_id)
-    model.get_response(f'''Please summarize the conversation {history}
-                            Rank it with severity: [severe, moderate, normal]
-                            Type of incident: [Self-harm, suicidal, ]''')
+    summary = await model.get_summary(session_id)
+    return({'summary':summary})

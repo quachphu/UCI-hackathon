@@ -51,3 +51,23 @@ class Model:
         conversation = self._get_conversation()
         response = await conversation.ainvoke({"user_input": user_input},config={'configurable':{"session_id":f"{session_id}"}})
         return response.content
+    
+    async def get_summary(self, session_id: str) -> str:
+        """Summarize the conversation for a given session."""
+        history = self.get_session_history(session_id)
+        if not history.messages:
+            return "No conversation to summarize."
+
+        conversation_text = "\n".join(
+            f"{msg.type}: {msg.content}" for msg in history.messages
+        )
+
+        summary_prompt = f"""Summarize the following conversation concisely, 
+        highlighting key concerns, emotions, and any action items:
+        {conversation_text}
+        Rank it with severity: [severe, moderate, normal]
+        Type of incident: [Self-harm, suicidal, Depressed, Anxiety, Asking for resources]
+        In the json format please"""
+
+        response = await self.model.ainvoke([("human", summary_prompt)])
+        return response.content

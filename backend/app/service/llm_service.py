@@ -27,3 +27,4 @@ async def get_chat_history(session_id: str,model) -> list[dict]:
     """Return the full conversation history for a session."""
     history = model.get_session_history(session_id)
     return [{"role": msg.type, "content": msg.content} for msg in history.messages]
+
