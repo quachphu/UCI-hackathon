@@ -36,6 +36,7 @@ Required variables:
 5. In **Firestore Database**, create database in production or test mode.
 6. Create these collections:
 	- `chat_messages`
+	- `chat_sessions`
 	- `call_transcripts`
 	- `case_cards`
 	- `users`
@@ -44,6 +45,11 @@ Required variables:
 	- Fields: `clientUid` (Ascending), `createdAt` (Ascending)
 	- This is used by the primary realtime query on the client page.
 	- The app includes a compatibility fallback if this index is missing, but indexed mode is preferred for stable ordering and performance.
+8. `chat_sessions/{clientUid}` takeover control document:
+	- Fields: `clientUid`, `handlerMode` (`"ai"` or `"counselor"`), `changedBy`, `changedAt`
+	- If document is missing, client defaults to counselor/manual mode.
+	- AI replies run only when counselor explicitly switches mode to `"ai"`.
+	- If counselor switches to counselor mode while AI is streaming, the in-flight AI stream is aborted.
 
 Firebase client initialization lives in `src/lib/firebase.ts`.
 
@@ -52,3 +58,4 @@ Firebase client initialization lives in `src/lib/firebase.ts`.
 - Frontend is configured to call FastAPI directly from browser.
 - Backend should allow CORS for `http://localhost:3000`.
 - If you change `.env.local`, restart the dev server.
+- Firestore rules should allow client read access to their own `chat_sessions/{clientUid}` and counselor/admin write access to `handlerMode`.

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
 	addDoc,
 	collection,
+	doc,
 	onSnapshot,
 	orderBy,
 	query,
@@ -15,6 +16,7 @@ import {
 } from "firebase/firestore";
 import ChatWindow from "@/app/components/chat/ChatWindow";
 import type { ChatMessageItem } from "@/app/components/chat/MessageList";
+import type { HandlerMode } from "@/lib/chat-types";
 import { auth, db, isFirebaseConfigured } from "@/lib/firebase";
 import { useAuth } from "@/lib/auth-context";
 
@@ -29,6 +31,13 @@ type ChatMessage = {
 };
 
 type ListenerMode = "indexed" | "fallback";
+
+type ChatSessionControl = {
+	clientUid: string;
+	handlerMode: HandlerMode;
+	changedBy?: string;
+	changedAt?: Timestamp;
+};
 
 function sortMessagesByTimestamp(items: ChatMessage[]): ChatMessage[] {
 	return [...items].sort((a, b) => {
@@ -77,6 +86,8 @@ export default function ClientChatPage() {
 	const [isSending, setIsSending] = useState(false);
 	const [listenerMode, setListenerMode] = useState<ListenerMode>("indexed");
 	const [listenerError, setListenerError] = useState<string>();
+	const [handlerMode, setHandlerMode] = useState<HandlerMode>("counselor");
+	const [handlerModeError, setHandlerModeError] = useState<string>();
 
 	// Live streaming bubble — shown while AI is responding
 	const [streamingText, setStreamingText] = useState("");
@@ -106,6 +117,8 @@ export default function ClientChatPage() {
 	// ── Real-time Firestore listener (replaces polling) ────────
 	useEffect(() => {
 		if (!db || !activeClientUid) return;
+		const firestore = db;
+		const clientUid = activeClientUid;
 
 		setListenerMode("indexed");
 		setListenerError(undefined);
@@ -138,7 +151,7 @@ export default function ClientChatPage() {
 				return;
 			}
 
-			const fallbackQuery = query(collection(db, "chat_messages"), where("clientUid", "==", activeClientUid));
+			const fallbackQuery = query(collection(firestore, "chat_messages"), where("clientUid", "==", clientUid));
 
 			setListenerMode("fallback");
 			setListenerError(undefined);
@@ -157,11 +170,11 @@ export default function ClientChatPage() {
 			);
 		};
 
-		const indexedQuery = query(
-			collection(db, "chat_messages"),
-			where("clientUid", "==", activeClientUid),
-			orderBy("createdAt", "asc"),
-		);
+			const indexedQuery = query(
+				collection(firestore, "chat_messages"),
+				where("clientUid", "==", clientUid),
+				orderBy("createdAt", "asc"),
+			);
 
 		currentUnsubscribe = onSnapshot(
 			indexedQuery,
@@ -195,6 +208,55 @@ export default function ClientChatPage() {
 		};
 	}, [activeClientUid]);
 
+	// ── Session handler mode listener ───────────────────────────
+	useEffect(() => {
+		if (!db || !activeClientUid) {
+			setHandlerMode("counselor");
+			setHandlerModeError(undefined);
+			return;
+		}
+
+		const sessionRef = doc(db, "chat_sessions", activeClientUid);
+		const unsubscribe = onSnapshot(
+			sessionRef,
+			(snapshot) => {
+				if (!snapshot.exists()) {
+					setHandlerMode("counselor");
+					setHandlerModeError(undefined);
+					return;
+				}
+
+				const data = snapshot.data() as Partial<ChatSessionControl>;
+				if (data.handlerMode === "ai" || data.handlerMode === "counselor") {
+					setHandlerMode(data.handlerMode);
+					setHandlerModeError(undefined);
+					return;
+				}
+
+				setHandlerMode("counselor");
+				setHandlerModeError("Invalid session mode, defaulting to counselor.");
+			},
+			(error) => {
+				setHandlerMode("counselor");
+				setHandlerModeError(error.message || "Failed to read handler mode.");
+			},
+		);
+
+		return () => unsubscribe();
+	}, [activeClientUid]);
+
+	// If counselor takes over mid-stream, stop AI generation immediately.
+	useEffect(() => {
+		if (handlerMode !== "counselor" || !isStreaming) {
+			return;
+		}
+
+		abortRef.current?.abort();
+		setStreamingText("");
+		setIsStreaming(false);
+		setStatus("Counselor takeover enabled. AI response stopped.");
+	}, [handlerMode, isStreaming]);
+
 	const listenerStatusText = useMemo(() => {
 		if (!activeClientUid) {
 			return "Preparing session...";
@@ -210,6 +272,13 @@ export default function ClientChatPage() {
 
 		return "History synced.";
 	}, [activeClientUid, listenerError, listenerMode]);
+
+	const handlerStatusText = useMemo(() => {
+		if (handlerModeError) {
+			return `Handler mode issue: ${handlerModeError}`;
+		}
+		return handlerMode === "counselor" ? "Counselor is handling replies." : "AI is handling replies.";
+	}, [handlerMode, handlerModeError]);
 
 	// ── Build rendered messages (+ streaming bubble) ───────────
 
@@ -257,6 +326,7 @@ export default function ClientChatPage() {
 		const controller = new AbortController();
 		abortRef.current = controller;
 		let fullText = "";
+		let wasAborted = false;
 
 		try {
 			const res = await fetch(`${API_BASE}/llm/stream`, {
@@ -295,7 +365,9 @@ export default function ClientChatPage() {
 				}
 			}
 		} catch (err) {
-			if ((err as Error).name !== "AbortError") {
+			if ((err as Error).name === "AbortError") {
+				wasAborted = true;
+			} else {
 				setStatus(`AI stream failed: ${(err as Error).message}`);
 			}
 		} finally {
@@ -305,7 +377,7 @@ export default function ClientChatPage() {
 		}
 
 		// Persist complete AI reply to Firestore
-		if (fullText && db) {
+		if (!wasAborted && fullText && db) {
 			try {
 				await addDoc(collection(db, "chat_messages"), {
 					message: fullText,
@@ -348,8 +420,11 @@ export default function ClientChatPage() {
 				createdAt: serverTimestamp(),
 			});
 
-			// Stream AI response
-			await streamAIResponse(text);
+			if (handlerMode === "ai") {
+				await streamAIResponse(text);
+			} else {
+				setStatus("Waiting for counselor reply.");
+			}
 		} catch (error) {
 			setStatus(error instanceof Error ? error.message : "Failed to send message.");
 		} finally {
@@ -359,9 +434,9 @@ export default function ClientChatPage() {
 
 	return (
 		<main className="mx-auto min-h-screen w-full max-w-4xl px-6 py-12">
-			<ChatWindow
-				title={currentUser ? "Client Chat" : "Guest Chat"}
-				statusText={`Firebase: ${canUseFirebase ? "ready" : "not configured"} • ${listenerStatusText}${status !== "Ready" ? ` • ${status}` : ""}`}
+				<ChatWindow
+					title={currentUser ? "Client Chat" : "Guest Chat"}
+					statusText={`Firebase: ${canUseFirebase ? "ready" : "not configured"} • ${listenerStatusText} • ${handlerStatusText}${status !== "Ready" ? ` • ${status}` : ""}`}
 				messages={renderedMessages}
 				inputValue={message}
 				onInputChange={setMessage}

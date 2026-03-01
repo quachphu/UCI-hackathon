@@ -4,15 +4,20 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
 	addDoc,
 	collection,
+	doc,
 	getDocs,
 	limit,
+	onSnapshot,
 	query,
 	serverTimestamp,
+	setDoc,
 	type Timestamp,
 } from "firebase/firestore";
+import Agentchoices from "@/app/components/couselor/Agentchoices";
 import ChatLog from "@/app/components/couselor/ChatLog";
 import type { ConversationRow } from "@/app/components/couselor/ChatLog";
 import Transcript from "@/app/components/couselor/Transcript";
+import type { HandlerMode } from "@/lib/chat-types";
 import { db } from "@/lib/firebase";
 
 type CounselorTab = "transcript" | "chat";
@@ -27,6 +32,13 @@ type ChatMessage = {
 	clientUid?: string;
 	message: string;
 	createdAt?: Timestamp;
+};
+
+type ChatSessionControl = {
+	clientUid: string;
+	handlerMode: HandlerMode;
+	changedBy?: string;
+	changedAt?: Timestamp;
 };
 
 function inferClientUid(message: ChatMessage): string {
@@ -53,6 +65,9 @@ export default function CounselorPage() {
 	const [status, setStatus] = useState("Ready");
 	const [isLoadingMessages, setIsLoadingMessages] = useState(false);
 	const [isSending, setIsSending] = useState(false);
+	const [selectedHandlerMode, setSelectedHandlerMode] = useState<HandlerMode>("counselor");
+	const [isUpdatingHandlerMode, setIsUpdatingHandlerMode] = useState(false);
+	const [handlerModeStatus, setHandlerModeStatus] = useState("Counselor handles replies by default.");
 
 	const timeFormatter = useMemo(
 		() =>
@@ -180,6 +195,39 @@ export default function CounselorPage() {
 		}
 	}, [conversations, selectedClientUid]);
 
+	useEffect(() => {
+		if (!db || !isAdminAuthenticated || !selectedClientUid) {
+			setSelectedHandlerMode("counselor");
+			setHandlerModeStatus("Counselor handles replies by default.");
+			return;
+		}
+
+		const sessionRef = doc(db, "chat_sessions", selectedClientUid);
+		const unsubscribe = onSnapshot(
+			sessionRef,
+			(snapshot) => {
+				if (!snapshot.exists()) {
+					setSelectedHandlerMode("counselor");
+					setHandlerModeStatus("Counselor handles replies by default.");
+					return;
+				}
+
+				const data = snapshot.data() as Partial<ChatSessionControl>;
+				const mode = data.handlerMode === "ai" ? "ai" : "counselor";
+				setSelectedHandlerMode(mode);
+				setHandlerModeStatus(
+					mode === "counselor" ? "Counselor is handling replies." : "AI is handling replies.",
+				);
+			},
+			(error) => {
+				setSelectedHandlerMode("counselor");
+				setHandlerModeStatus(error.message || "Failed to load handler mode.");
+			},
+		);
+
+		return () => unsubscribe();
+	}, [isAdminAuthenticated, selectedClientUid]);
+
 	const selectedThread = useMemo(() => {
 		if (!isAdminAuthenticated || !selectedClientUid) {
 			return [] as ChatMessage[];
@@ -221,6 +269,33 @@ export default function CounselorPage() {
 			setStatus(error instanceof Error ? error.message : "Failed to send reply.");
 		} finally {
 			setIsSending(false);
+		}
+	}
+
+	async function updateHandlerMode(nextMode: HandlerMode) {
+		if (!db || !selectedClientUid) {
+			return;
+		}
+
+		try {
+			setIsUpdatingHandlerMode(true);
+			await setDoc(
+				doc(db, "chat_sessions", selectedClientUid),
+				{
+					clientUid: selectedClientUid,
+					handlerMode: nextMode,
+					changedBy: ADMIN_UID,
+					changedAt: serverTimestamp(),
+				},
+				{ merge: true },
+			);
+			setHandlerModeStatus(
+				nextMode === "counselor" ? "Counselor is handling replies." : "AI is handling replies.",
+			);
+		} catch (error) {
+			setHandlerModeStatus(error instanceof Error ? error.message : "Failed to update handler mode.");
+		} finally {
+			setIsUpdatingHandlerMode(false);
 		}
 	}
 
@@ -318,22 +393,31 @@ export default function CounselorPage() {
 				<section className="min-h-75 border-t border-black/20 p-4 md:border-t-0 dark:border-white/20">
 					{selectedTab === "chat" ? (
 						<div className="flex h-full flex-col rounded-lg border border-black/20 dark:border-white/20">
-							<header className="border-b border-black/15 px-4 py-3 text-sm font-semibold dark:border-white/15">
-								{selectedClientUid ? `Conversation: ${selectedClientUid}` : "Select a conversation"}
-							</header>
-
-							<div className="min-h-105 flex-1 space-y-3 overflow-y-auto px-4 py-4">
+								<header className="border-b border-black/15 px-4 py-3 text-sm font-semibold dark:border-white/15">
+									{selectedClientUid ? `Conversation: ${selectedClientUid}` : "Select a conversation"}
+								</header>
 								{selectedClientUid ? (
-									selectedThread.length === 0 ? (
-										<p className="text-sm text-foreground/70">No messages yet.</p>
-									) : (
-										selectedThread.map((item) => {
-												const isCounselor = item.uid === ADMIN_UID;
-											return (
-												<div
-													key={item.id}
-													className={`flex ${isCounselor ? "justify-end" : "justify-start"}`}
-												>
+									<Agentchoices
+										mode={selectedHandlerMode}
+										disabled={isUpdatingHandlerMode}
+										onSelectAI={() => void updateHandlerMode("ai")}
+										onSelectCounselor={() => void updateHandlerMode("counselor")}
+										statusText={handlerModeStatus}
+									/>
+								) : null}
+
+								<div className="min-h-105 flex-1 space-y-3 overflow-y-auto px-4 py-4">
+									{selectedClientUid ? (
+										selectedThread.length === 0 ? (
+											<p className="text-sm text-foreground/70">No messages yet.</p>
+										) : (
+											selectedThread.map((item) => {
+													const isCounselor = item.uid === ADMIN_UID || item.uid === "ai_counselor";
+												return (
+													<div
+														key={item.id}
+														className={`flex ${isCounselor ? "justify-end" : "justify-start"}`}
+													>
 													<div
 														className={`max-w-[75%] rounded-2xl border px-3 py-2 text-sm ${
 															isCounselor
