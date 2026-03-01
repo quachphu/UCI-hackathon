@@ -9,6 +9,7 @@ import {
 	orderBy,
 	query,
 	serverTimestamp,
+	setDoc,
 	where,
 	type DocumentData,
 	type QuerySnapshot,
@@ -86,7 +87,7 @@ export default function ClientChatPage() {
 	const [isSending, setIsSending] = useState(false);
 	const [listenerMode, setListenerMode] = useState<ListenerMode>("indexed");
 	const [listenerError, setListenerError] = useState<string>();
-	const [handlerMode, setHandlerMode] = useState<HandlerMode>("counselor");
+	const [handlerMode, setHandlerMode] = useState<HandlerMode>("ai");
 	const [handlerModeError, setHandlerModeError] = useState<string>();
 
 	// Live streaming bubble — shown while AI is responding
@@ -209,19 +210,34 @@ export default function ClientChatPage() {
 	}, [activeClientUid]);
 
 	// ── Session handler mode listener ───────────────────────────
+	// Force AI mode on every page load, then listen for changes
 	useEffect(() => {
 		if (!db || !activeClientUid) {
-			setHandlerMode("counselor");
+			setHandlerMode("ai");
 			setHandlerModeError(undefined);
 			return;
 		}
 
+		// Force reset to AI mode on page load
 		const sessionRef = doc(db, "chat_sessions", activeClientUid);
+		setDoc(
+			sessionRef,
+			{
+				clientUid: activeClientUid,
+				handlerMode: "ai",
+				changedBy: "client_refresh",
+				changedAt: serverTimestamp(),
+			},
+			{ merge: true },
+		).catch((error) => {
+			console.error("Failed to reset handler mode:", error);
+		});
+
 		const unsubscribe = onSnapshot(
 			sessionRef,
 			(snapshot) => {
 				if (!snapshot.exists()) {
-					setHandlerMode("counselor");
+					setHandlerMode("ai");
 					setHandlerModeError(undefined);
 					return;
 				}
@@ -233,11 +249,11 @@ export default function ClientChatPage() {
 					return;
 				}
 
-				setHandlerMode("counselor");
-				setHandlerModeError("Invalid session mode, defaulting to counselor.");
+				setHandlerMode("ai");
+				setHandlerModeError("Invalid session mode, defaulting to AI.");
 			},
 			(error) => {
-				setHandlerMode("counselor");
+				setHandlerMode("ai");
 				setHandlerModeError(error.message || "Failed to read handler mode.");
 			},
 		);
