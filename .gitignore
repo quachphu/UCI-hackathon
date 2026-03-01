@@ -4,3 +4,6 @@ test.py
 __pycache__/
 **/__pycache__/
 **__init__.py
+.env
+.env.local
+ivory-oarlock-474002-p8-b7610f43ad57.json
