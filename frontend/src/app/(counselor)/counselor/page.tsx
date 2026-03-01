@@ -21,9 +21,14 @@ import type { HandlerMode } from "@/lib/chat-types";
 import { db } from "@/lib/firebase";
 
 type CounselorTab = "transcript" | "chat";
-const ADMIN_USERNAME = "khoi2104";
-const ADMIN_PASSWORD = "123";
-const ADMIN_UID = "admin_khoi2104";
+
+// Admin credentials - multiple users supported
+const ADMIN_USERS: { username: string; password: string; uid: string }[] = [
+	{ username: "khoi2104", password: "123", uid: "admin_khoi2104" },
+	{ username: "syn", password: "123", uid: "admin_syn" },
+	{ username: "phu", password: "123", uid: "admin_phu" },
+];
+
 const ADMIN_SESSION_KEY = "counselor_admin_session";
 
 type ChatMessage = {
@@ -46,7 +51,8 @@ function inferClientUid(message: ChatMessage): string {
 		return message.clientUid;
 	}
 
-	if (message.uid !== ADMIN_UID) {
+	const isAdmin = ADMIN_USERS.some((u) => u.uid === message.uid);
+	if (!isAdmin) {
 		return message.uid;
 	}
 
@@ -55,6 +61,7 @@ function inferClientUid(message: ChatMessage): string {
 
 export default function CounselorPage() {
 	const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
+	const [adminUid, setAdminUid] = useState("");
 	const [loginUsername, setLoginUsername] = useState("");
 	const [loginPassword, setLoginPassword] = useState("");
 	const [loginError, setLoginError] = useState("");
@@ -65,9 +72,9 @@ export default function CounselorPage() {
 	const [status, setStatus] = useState("Ready");
 	const [isLoadingMessages, setIsLoadingMessages] = useState(false);
 	const [isSending, setIsSending] = useState(false);
-	const [selectedHandlerMode, setSelectedHandlerMode] = useState<HandlerMode>("counselor");
+	const [selectedHandlerMode, setSelectedHandlerMode] = useState<HandlerMode>("ai");
 	const [isUpdatingHandlerMode, setIsUpdatingHandlerMode] = useState(false);
-	const [handlerModeStatus, setHandlerModeStatus] = useState("Counselor handles replies by default.");
+	const [handlerModeStatus, setHandlerModeStatus] = useState("AI handles replies by default.");
 
 	const timeFormatter = useMemo(
 		() =>
@@ -81,15 +88,22 @@ export default function CounselorPage() {
 	useEffect(() => {
 		if (window.localStorage.getItem(ADMIN_SESSION_KEY) === "true") {
 			setIsAdminAuthenticated(true);
+			const storedUid = window.localStorage.getItem("admin_uid") ?? "";
+			setAdminUid(storedUid);
 		}
 	}, []);
 
 	function handleAdminLogin() {
-		if (loginUsername === ADMIN_USERNAME && loginPassword === ADMIN_PASSWORD) {
+		const validUser = ADMIN_USERS.find(
+			(u) => u.username === loginUsername && u.password === loginPassword
+		);
+		if (validUser) {
 			window.localStorage.setItem(ADMIN_SESSION_KEY, "true");
+			window.localStorage.setItem("admin_uid", validUser.uid);
+			setAdminUid(validUser.uid);
 			setIsAdminAuthenticated(true);
 			setLoginError("");
-			setStatus("Admin authenticated.");
+			setStatus(`Authenticated as ${validUser.username}.`);
 			return;
 		}
 
@@ -255,7 +269,7 @@ export default function CounselorPage() {
 		try {
 			setIsSending(true);
 			await addDoc(collection(db, "chat_messages"), {
-				uid: ADMIN_UID,
+				uid: adminUid,
 				clientUid: selectedClientUid,
 				message: draftMessage.trim(),
 				source: "counselor_page",
@@ -284,7 +298,7 @@ export default function CounselorPage() {
 				{
 					clientUid: selectedClientUid,
 					handlerMode: nextMode,
-					changedBy: ADMIN_UID,
+					changedBy: adminUid,
 					changedAt: serverTimestamp(),
 				},
 				{ merge: true },
@@ -412,7 +426,7 @@ export default function CounselorPage() {
 											<p className="text-sm text-foreground/70">No messages yet.</p>
 										) : (
 											selectedThread.map((item) => {
-													const isCounselor = item.uid === ADMIN_UID || item.uid === "ai_counselor";
+													const isCounselor = ADMIN_USERS.some((u) => u.uid === item.uid) || item.uid === "ai_counselor";
 												return (
 													<div
 														key={item.id}
