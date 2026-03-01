@@ -47,7 +47,14 @@ export default function SummaryNoteCard({ sessionId, onClose, onSummaryLoaded }:
 			const res = await fetch(`${API_BASE}/llm/summary/${encodeURIComponent(sessionId)}`);
 			if (!res.ok) throw new Error(`Server returned ${res.status}`);
 			const json = await res.json();
-			const summaryData: SummaryData = json.summary ?? json;
+			const raw = json.summary ?? json;
+
+			// Backend returns a plain string when there's no conversation history
+			if (typeof raw === "string") {
+				throw new Error(raw || "No conversation data available.");
+			}
+
+			const summaryData: SummaryData = raw;
 			setData(summaryData);
 			onSummaryLoaded?.(summaryData);
 		} catch (err) {
@@ -100,7 +107,7 @@ export default function SummaryNoteCard({ sessionId, onClose, onSummaryLoaded }:
 					)}
 
 					{data && !isLoading && (
-						<div className="space-y-4">
+						<div className="space-y-3">
 							{/* Risk level badge */}
 							{data.risk_level && (
 								<div className="flex items-center gap-2">
@@ -113,14 +120,18 @@ export default function SummaryNoteCard({ sessionId, onClose, onSummaryLoaded }:
 								</div>
 							)}
 
-							{/* Fields */}
-							<Field label="Summary" value={data.summary} />
-							<Field label="Main Issue" value={data.main_issue} />
-							<Field label="Emotional State" value={data.emotional_state} capitalize />
-							<Field label="Risk Reasoning" value={data.risk_reasoning} />
-							<Field label="Immediate Needs" value={data.immediate_needs} />
-							<Field label="Location Mentioned" value={data.location_mentioned ?? "None"} />
-							<Field label="Follow-up Recommendation" value={data.follow_up_recommendation} />
+							{/* Summary — full width */}
+							<FieldCard icon="📝" label="Summary" value={data.summary} />
+
+							{/* 2-column grid */}
+							<div className="grid grid-cols-2 gap-3">
+								<FieldCard icon="🎯" label="Main Issue" value={data.main_issue} />
+								<FieldCard icon="💭" label="Emotional State" value={data.emotional_state} capitalize />
+								<FieldCard icon="⚠️" label="Risk Reasoning" value={data.risk_reasoning} />
+								<FieldCard icon="🆘" label="Immediate Needs" value={data.immediate_needs} />
+								<FieldCard icon="📍" label="Location Mentioned" value={data.location_mentioned ?? "None"} />
+								<FieldCard icon="📋" label="Follow-up" value={data.follow_up_recommendation} />
+							</div>
 						</div>
 					)}
 				</div>
@@ -142,11 +153,26 @@ export default function SummaryNoteCard({ sessionId, onClose, onSummaryLoaded }:
 	);
 }
 
-function Field({ label, value, capitalize = false }: { label: string; value: string; capitalize?: boolean }) {
+function FieldCard({
+	icon,
+	label,
+	value,
+	capitalize = false,
+}: {
+	icon: string;
+	label: string;
+	value: string;
+	capitalize?: boolean;
+}) {
 	return (
-		<div>
-			<p className="mb-0.5 text-[11px] font-semibold uppercase tracking-wide text-[#64748b]">{label}</p>
-			<p className={`text-sm leading-relaxed text-[#c4cad8] ${capitalize ? "capitalize" : ""}`}>{value}</p>
+		<div className="rounded-xl border border-[#2a3545] bg-[#0f1724]/60 px-3.5 py-3">
+			<div className="mb-1.5 flex items-center gap-1.5">
+				<span className="text-sm">{icon}</span>
+				<p className="text-[11px] font-semibold uppercase tracking-wide text-[#64748b]">{label}</p>
+			</div>
+			<p className={`text-sm font-medium leading-relaxed ${value ? "text-[#c4cad8]" : "text-[#64748b] italic"} ${capitalize ? "capitalize" : ""}`}>
+				{value || "—"}
+			</p>
 		</div>
 	);
 }
