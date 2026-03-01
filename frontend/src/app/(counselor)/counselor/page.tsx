@@ -18,6 +18,7 @@ import CounselorSidebar, {
 	type SidebarTab,
 } from "@/app/components/couselor/CounselorSidebar";
 import CounselorChatPanel from "@/app/components/couselor/CounselorChatPanel";
+import Transcript from "@/app/components/couselor/Transcript";
 import type { ChatMessageItem } from "@/app/components/chat/MessageList";
 import type { RiskLevel } from "@/app/components/couselor/RiskBadge";
 import type { HandlerMode } from "@/lib/chat-types";
@@ -571,6 +572,7 @@ export default function CounselorPage() {
 					riskLevels={riskLevels}
 					selectedClientUid={selectedClientUid}
 					onSelectClient={handleSelectClient}
+					transcriptContent={<Transcript />}
 				/>
 				<CounselorChatPanel
 					selectedClientUid={selectedClientUid}
