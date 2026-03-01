@@ -69,12 +69,16 @@ class AssemblyAIStreamerTwilio(StreamingClient):
             txt = (event.transcript or "").strip()
             if txt:
                 asyncio.run_coroutine_threadsafe(
-                    self._handle_turn(txt,1),self._loop
+                    self._handle_turn(txt,"1"),self._loop
                 )
 
     async def _handle_turn(self, txt: str, session_id: str):
-        response = await self.model.get_response(user_input=txt, session_id=session_id)
-        print(response)
+        try:
+            async for chunk in self.model.converse_stream(user_input=txt, session_id=session_id):
+                print(chunk)
+        except Exception as e:
+            print(f"[AssemblyAI] converse_stream error: {e}")
+            raise
 
     def on_terminated(self, client: "StreamingClient", event: TerminationEvent):
         print(f"[AssemblyAI] Session terminated ({event.audio_duration_seconds}s processed)")
