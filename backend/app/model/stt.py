@@ -31,6 +31,8 @@ class AssemblyAIStreamerTwilio(StreamingClient):
             sample_rate=TWILIO_SAMPLE_RATE,              
             encoding=aai.AudioEncoding.pcm_mulaw,        
             format_turns=True,
+            speech_model = "universal-streaming-multilingual",
+            language_detection=True
         )
         self._active = True
         self.connect(params)
