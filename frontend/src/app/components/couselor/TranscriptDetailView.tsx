@@ -1,6 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import TranscriptEntry from "./TranscriptEntry";
+import RiskBadge from "./RiskBadge";
+import SummaryNoteCard from "./SummaryNoteCard";
+import type { RiskLevel } from "./RiskBadge";
 
 export type TranscriptMessage = {
 	role: string;
@@ -16,12 +20,16 @@ export type TranscriptSession = {
 	/** Formatted date/time string, e.g. "Today, 9:26 AM" */
 	dateLabel?: string;
 	messages: TranscriptMessage[];
+	/** Risk level from summary analysis */
+	riskLevel?: RiskLevel;
 };
 
 type TranscriptDetailViewProps = {
 	session: TranscriptSession;
 	/** Called when the user presses the back button */
 	onBack: () => void;
+	/** Called when summary analysis returns a risk level */
+	onRiskLevelChange?: (sessionId: string, level: RiskLevel) => void;
 };
 
 /** Map speaker roles to display names */
@@ -50,15 +58,23 @@ function fakeTimestamp(index: number): string {
  * Displays a header with a back arrow, session info, and a scrollable
  * list of TranscriptEntry rows matching the call-log design.
  */
-export default function TranscriptDetailView({ session, onBack }: TranscriptDetailViewProps) {
+export default function TranscriptDetailView({ session, onBack, onRiskLevelChange }: TranscriptDetailViewProps) {
+	const [showSummary, setShowSummary] = useState(false);
+
+	function toRiskLevel(raw: string): RiskLevel {
+		const lower = raw.toLowerCase();
+		if (lower === "critical" || lower === "high" || lower === "medium" || lower === "low") return lower;
+		return "low";
+	}
+
 	return (
-		<div className="flex h-full flex-col bg-white">
+		<div className="relative flex h-full flex-col bg-[#0f1724]">
 			{/* ── Header ── */}
-			<header className="flex items-center gap-3 border-b border-gray-200 px-5 py-4">
+			<header className="flex items-center gap-3 border-b border-[#2a3545] px-5 py-4">
 				<button
 					type="button"
 					onClick={onBack}
-					className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800"
+					className="flex h-8 w-8 items-center justify-center rounded-full text-[#8b93a7] transition-colors hover:bg-[#243044] hover:text-white"
 					aria-label="Back to transcript list"
 				>
 					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
@@ -71,7 +87,7 @@ export default function TranscriptDetailView({ session, onBack }: TranscriptDeta
 				</button>
 
 				{/* Phone icon */}
-				<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-900">
+				<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#334155]">
 					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="white" className="h-5 w-5">
 						<path
 							fillRule="evenodd"
@@ -82,22 +98,34 @@ export default function TranscriptDetailView({ session, onBack }: TranscriptDeta
 				</div>
 
 				<div className="min-w-0 flex-1">
-					<h2 className="text-base font-semibold text-gray-900">{session.label}</h2>
-					{session.subtitle && <p className="text-sm text-gray-500">{session.subtitle}</p>}
+					<div className="flex items-center gap-2">
+						<h2 className="text-base font-semibold text-white">{session.label}</h2>
+						{session.riskLevel && <RiskBadge level={session.riskLevel} />}
+					</div>
+					{session.subtitle && <p className="text-sm text-[#8b93a7]">{session.subtitle}</p>}
 				</div>
 
+				{/* Summary button */}
+				<button
+					type="button"
+					onClick={() => setShowSummary(true)}
+					className="shrink-0 rounded-lg border border-[#2a3545] px-3 py-1.5 text-xs font-semibold text-[#8b93a7] transition-colors hover:bg-[#243044] hover:text-white"
+				>
+					Summary
+				</button>
+
 				{session.dateLabel && (
-					<span className="shrink-0 text-xs text-gray-400">{session.dateLabel}</span>
+					<span className="shrink-0 text-xs text-[#64748b]">{session.dateLabel}</span>
 				)}
 			</header>
 
 			{/* ── Transcript body ── */}
 			<div className="flex-1 overflow-y-auto px-6 py-4">
-				<div className="mx-auto max-w-2xl rounded-xl border border-gray-200 px-6 py-4">
+				<div className="mx-auto max-w-2xl rounded-xl border border-[#2a3545] bg-[#1a2332] px-6 py-4">
 					{session.messages.length === 0 ? (
-						<p className="py-8 text-center text-sm text-gray-400">No messages in this transcript.</p>
+						<p className="py-8 text-center text-sm text-[#64748b]">No messages in this transcript.</p>
 					) : (
-						<div className="divide-y divide-gray-100">
+						<div className="divide-y divide-[#2a3545]">
 							{session.messages.map((msg, i) => (
 								<TranscriptEntry
 									key={i}
@@ -110,6 +138,18 @@ export default function TranscriptDetailView({ session, onBack }: TranscriptDeta
 					)}
 				</div>
 			</div>
+
+			{/* Summary overlay */}
+			{showSummary && (
+				<SummaryNoteCard
+					sessionId={session.sessionId}
+					onClose={() => setShowSummary(false)}
+					onSummaryLoaded={(data) => {
+						const level = toRiskLevel(data.risk_level);
+						onRiskLevelChange?.(session.sessionId, level);
+					}}
+				/>
+			)}
 		</div>
 	);
 }

@@ -17,9 +17,9 @@ export type TranscriptEntryProps = {
 export default function TranscriptEntry({ timestamp, speaker, text }: TranscriptEntryProps) {
 	return (
 		<div className="flex gap-4 py-2">
-			<span className="w-10 shrink-0 text-sm text-gray-400">{timestamp}</span>
-			<p className="text-sm leading-relaxed text-gray-800">
-				<span className="font-bold text-gray-900">{speaker}:</span> {text}
+			<span className="w-10 shrink-0 text-sm text-[#64748b]">{timestamp}</span>
+			<p className="text-sm leading-relaxed text-[#c4cad8]">
+				<span className="font-bold text-white">{speaker}:</span> {text}
 			</p>
 		</div>
 	);

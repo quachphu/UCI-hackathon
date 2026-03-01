@@ -81,6 +81,7 @@ export default function Transcript({
 							messageCount={session.messages.length}
 							isSelected={selectedSessionId === session.sessionId}
 							onClick={() => onSelectSession(session)}
+							riskLevel={session.riskLevel}
 						/>
 					))}
 				</div>

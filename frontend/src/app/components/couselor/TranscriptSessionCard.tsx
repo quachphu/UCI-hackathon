@@ -1,5 +1,8 @@
 "use client";
 
+import RiskBadge from "./RiskBadge";
+import type { RiskLevel } from "./RiskBadge";
+
 export type TranscriptSessionCardProps = {
 	/** Display label, e.g. "Session 1" */
 	label: string;
@@ -13,6 +16,8 @@ export type TranscriptSessionCardProps = {
 	isSelected: boolean;
 	/** Click handler */
 	onClick: () => void;
+	/** Optional risk level badge */
+	riskLevel?: RiskLevel;
 };
 
 /**
@@ -26,6 +31,7 @@ export default function TranscriptSessionCard({
 	messageCount,
 	isSelected,
 	onClick,
+	riskLevel,
 }: TranscriptSessionCardProps) {
 	return (
 		<button
@@ -48,7 +54,10 @@ export default function TranscriptSessionCard({
 
 			{/* Label + preview */}
 			<div className="min-w-0 flex-1">
-				<p className="truncate text-base font-semibold text-white">{label}</p>
+				<div className="flex items-center gap-2">
+					<p className="truncate text-base font-semibold text-white">{label}</p>
+					{riskLevel && <RiskBadge level={riskLevel} />}
+				</div>
 				<p className="mt-0.5 truncate text-sm text-[#8b93a7]">{preview}</p>
 			</div>
 

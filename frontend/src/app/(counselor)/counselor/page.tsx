@@ -127,8 +127,7 @@ export default function CounselorPage() {
 									minute: "2-digit",
 							  })
 							: undefined,
-						messages: (data.messages as { role: string; content: string }[]) ?? [],
-					};
+						messages: (data.messages as { role: string; content: string }[]) ?? [],							riskLevel: data.riskLevel as RiskLevel | undefined,					};
 				});
 				setTranscriptSessions(sessions);
 			},
@@ -156,6 +155,21 @@ export default function CounselorPage() {
 			const messages = data.messages ?? [];
 			if (messages.length === 0) continue;
 
+			// Fetch summary for this session (best-effort)
+			let riskLevel: string | undefined;
+			try {
+				const summaryRes = await fetch(`http://localhost:1000/llm/summary/${sessionId}`);
+				if (summaryRes.ok) {
+					const summaryJson = await summaryRes.json();
+					const raw = summaryJson.summary ?? summaryJson;
+					if (typeof raw === "object" && raw.risk_level) {
+						riskLevel = raw.risk_level.toLowerCase();
+					}
+				}
+			} catch {
+				// Summary fetch is best-effort
+			}
+
 			// Commit to Firestore (merge to avoid overwriting createdAt on re-fetch)
 			await setDoc(
 				doc(db, "call_transcripts", sessionId),
@@ -166,6 +180,7 @@ export default function CounselorPage() {
 					messageCount: messages.length,
 					createdAt: serverTimestamp(),
 					status: "ended",
+					...(riskLevel ? { riskLevel } : {}),
 				},
 				{ merge: true },
 			);
@@ -657,6 +672,14 @@ export default function CounselorPage() {
 					<TranscriptDetailView
 						session={selectedTranscriptSession}
 						onBack={() => setSelectedTranscriptSession(null)}
+						onRiskLevelChange={(sessionId, level) => {
+							setTranscriptSessions((prev) =>
+								prev.map((s) => (s.sessionId === sessionId ? { ...s, riskLevel: level } : s)),
+							);
+							setSelectedTranscriptSession((prev) =>
+								prev && prev.sessionId === sessionId ? { ...prev, riskLevel: level } : prev,
+							);
+						}}
 					/>
 				) : (
 					<CounselorChatPanel
