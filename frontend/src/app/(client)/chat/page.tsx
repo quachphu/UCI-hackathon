@@ -9,7 +9,6 @@ import {
 	orderBy,
 	query,
 	serverTimestamp,
-	setDoc,
 	where,
 	type DocumentData,
 	type QuerySnapshot,
@@ -210,7 +209,7 @@ export default function ClientChatPage() {
 	}, [activeClientUid]);
 
 	// ── Session handler mode listener ───────────────────────────
-	// Force AI mode on every page load, then listen for changes
+	// Listen for handler mode changes (set by counselor page)
 	useEffect(() => {
 		if (!db || !activeClientUid) {
 			setHandlerMode("ai");
@@ -218,20 +217,7 @@ export default function ClientChatPage() {
 			return;
 		}
 
-		// Force reset to AI mode on page load
 		const sessionRef = doc(db, "chat_sessions", activeClientUid);
-		setDoc(
-			sessionRef,
-			{
-				clientUid: activeClientUid,
-				handlerMode: "ai",
-				changedBy: "client_refresh",
-				changedAt: serverTimestamp(),
-			},
-			{ merge: true },
-		).catch((error) => {
-			console.error("Failed to reset handler mode:", error);
-		});
 
 		const unsubscribe = onSnapshot(
 			sessionRef,
@@ -438,8 +424,13 @@ export default function ClientChatPage() {
 				createdAt: serverTimestamp(),
 			});
 
-			setStatus("Sending to AI...");
-			await streamAIResponse(text);
+			// Only trigger AI response when AI is handling; skip when counselor is active
+			if (handlerMode === "ai") {
+				setStatus("Sending to AI...");
+				await streamAIResponse(text);
+			} else {
+				setStatus("Message sent. Waiting for counselor reply.");
+			}
 		} catch (error) {
 			setStatus(error instanceof Error ? error.message : "Failed to send message.");
 		} finally {
@@ -449,15 +440,16 @@ export default function ClientChatPage() {
 
 	return (
 		<main className="mx-auto min-h-screen w-full max-w-4xl px-6 py-12">
-				<ChatWindow
-					title={currentUser ? "Client Chat" : "Guest Chat"}
-					statusText={`Firebase: ${canUseFirebase ? "ready" : "not configured"} • ${listenerStatusText} • ${handlerStatusText}${status !== "Ready" ? ` • ${status}` : ""}`}
+			<ChatWindow
+				title={currentUser ? "Client Chat" : "Guest Chat"}
+				statusText={`Firebase: ${canUseFirebase ? "ready" : "not configured"} • ${listenerStatusText} • ${handlerStatusText}${status !== "Ready" ? ` • ${status}` : ""}`}
 				messages={renderedMessages}
 				inputValue={message}
 				onInputChange={setMessage}
 				onSend={sendMessage}
 				isSending={isSending || isStreaming}
 				emptyText="No messages yet. Say something to start chatting with the AI counselor."
+				theme="dark"
 			/>
 		</main>
 	);

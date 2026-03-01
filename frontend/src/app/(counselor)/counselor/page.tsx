@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	addDoc,
 	collection,
@@ -11,16 +11,16 @@ import {
 	query,
 	serverTimestamp,
 	setDoc,
-	type Timestamp,
+	Timestamp,
 } from "firebase/firestore";
-import Agentchoices from "@/app/components/couselor/Agentchoices";
-import ChatLog from "@/app/components/couselor/ChatLog";
-import type { ConversationRow } from "@/app/components/couselor/ChatLog";
-import Transcript from "@/app/components/couselor/Transcript";
+import CounselorSidebar, {
+	type SidebarConversation,
+	type SidebarTab,
+} from "@/app/components/couselor/CounselorSidebar";
+import CounselorChatPanel from "@/app/components/couselor/CounselorChatPanel";
+import type { ChatMessageItem } from "@/app/components/chat/MessageList";
 import type { HandlerMode } from "@/lib/chat-types";
 import { db } from "@/lib/firebase";
-
-type CounselorTab = "transcript" | "chat";
 
 // Admin credentials - multiple users supported
 const ADMIN_USERS: { username: string; password: string; uid: string }[] = [
@@ -65,7 +65,7 @@ export default function CounselorPage() {
 	const [loginUsername, setLoginUsername] = useState("");
 	const [loginPassword, setLoginPassword] = useState("");
 	const [loginError, setLoginError] = useState("");
-	const [selectedTab, setSelectedTab] = useState<CounselorTab>("chat");
+	const [selectedTab, setSelectedTab] = useState<SidebarTab>("chat");
 	const [allMessages, setAllMessages] = useState<ChatMessage[]>([]);
 	const [selectedClientUid, setSelectedClientUid] = useState("");
 	const [draftMessage, setDraftMessage] = useState("");
@@ -75,6 +75,10 @@ export default function CounselorPage() {
 	const [selectedHandlerMode, setSelectedHandlerMode] = useState<HandlerMode>("ai");
 	const [isUpdatingHandlerMode, setIsUpdatingHandlerMode] = useState(false);
 	const [handlerModeStatus, setHandlerModeStatus] = useState("AI handles replies by default.");
+	const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+	const seenClientMessageIdsRef = useRef<Set<string>>(new Set());
+	const didInitializeSeenClientMessagesRef = useRef(false);
+
 
 	const timeFormatter = useMemo(
 		() =>
@@ -92,6 +96,53 @@ export default function CounselorPage() {
 			setAdminUid(storedUid);
 		}
 	}, []);
+
+	function isClientAuthoredMessage(message: ChatMessage): boolean {
+		const isAdmin = ADMIN_USERS.some((user) => user.uid === message.uid);
+		return !isAdmin && message.uid !== "ai_counselor";
+	}
+
+	function playNewMessageSound() {
+		try {
+			const AudioContextCtor = window.AudioContext ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+			if (!AudioContextCtor) {
+				return;
+			}
+
+			const context = new AudioContextCtor();
+			const now = context.currentTime;
+
+			const oscillatorA = context.createOscillator();
+			const gainA = context.createGain();
+			oscillatorA.type = "sine";
+			oscillatorA.frequency.setValueAtTime(880, now);
+			gainA.gain.setValueAtTime(0.0001, now);
+			gainA.gain.exponentialRampToValueAtTime(0.05, now + 0.01);
+			gainA.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+			oscillatorA.connect(gainA);
+			gainA.connect(context.destination);
+			oscillatorA.start(now);
+			oscillatorA.stop(now + 0.18);
+
+			const oscillatorB = context.createOscillator();
+			const gainB = context.createGain();
+			oscillatorB.type = "sine";
+			oscillatorB.frequency.setValueAtTime(1175, now + 0.12);
+			gainB.gain.setValueAtTime(0.0001, now + 0.12);
+			gainB.gain.exponentialRampToValueAtTime(0.04, now + 0.14);
+			gainB.gain.exponentialRampToValueAtTime(0.0001, now + 0.28);
+			oscillatorB.connect(gainB);
+			gainB.connect(context.destination);
+			oscillatorB.start(now + 0.12);
+			oscillatorB.stop(now + 0.28);
+
+			window.setTimeout(() => {
+				void context.close();
+			}, 400);
+		} catch {
+			// Notification audio is best-effort only.
+		}
+	}
 
 	function handleAdminLogin() {
 		const validUser = ADMIN_USERS.find(
@@ -118,6 +169,9 @@ export default function CounselorPage() {
 		setSelectedClientUid("");
 		setDraftMessage("");
 		setAllMessages([]);
+		setUnreadCounts({});
+		seenClientMessageIdsRef.current = new Set();
+		didInitializeSeenClientMessagesRef.current = false;
 		setStatus("Signed out.");
 	}
 
@@ -147,6 +201,38 @@ export default function CounselorPage() {
 				};
 			});
 
+			const clientMessages = items.filter(isClientAuthoredMessage);
+			if (!didInitializeSeenClientMessagesRef.current) {
+				for (const message of clientMessages) {
+					seenClientMessageIdsRef.current.add(message.id);
+				}
+				didInitializeSeenClientMessagesRef.current = true;
+			} else {
+				const newClientMessages = clientMessages.filter(
+					(message) => !seenClientMessageIdsRef.current.has(message.id),
+				);
+
+				if (newClientMessages.length > 0) {
+					for (const message of newClientMessages) {
+						seenClientMessageIdsRef.current.add(message.id);
+					}
+
+					setUnreadCounts((previous) => {
+						const next = { ...previous };
+						for (const message of newClientMessages) {
+							const clientUid = inferClientUid(message);
+							if (!clientUid || clientUid === selectedClientUid) {
+								continue;
+							}
+							next[clientUid] = (next[clientUid] ?? 0) + 1;
+						}
+						return next;
+					});
+
+					playNewMessageSound();
+				}
+			}
+
 			setAllMessages(items);
 			setStatus(`Loaded ${items.length} message(s).`);
 		} catch (error) {
@@ -154,7 +240,7 @@ export default function CounselorPage() {
 		} finally {
 			setIsLoadingMessages(false);
 		}
-	}, [isAdminAuthenticated]);
+	}, [isAdminAuthenticated, selectedClientUid]);
 
 	useEffect(() => {
 		if (!isAdminAuthenticated) {
@@ -169,7 +255,7 @@ export default function CounselorPage() {
 		return () => window.clearInterval(intervalId);
 	}, [isAdminAuthenticated, loadMessages]);
 
-	const conversations = useMemo<ConversationRow[]>(() => {
+	const conversations = useMemo<SidebarConversation[]>(() => {
 		if (!isAdminAuthenticated) {
 			return [];
 		}
@@ -196,6 +282,7 @@ export default function CounselorPage() {
 			.map(([uid, info]) => ({
 				uid,
 				label: uid,
+				initial: uid.charAt(0).toUpperCase(),
 				lastMessage: info.message,
 				lastTimestampMs: info.ts,
 				timeLabel: info.ts > 0 ? timeFormatter.format(new Date(info.ts)) : "",
@@ -208,6 +295,26 @@ export default function CounselorPage() {
 			setSelectedClientUid(conversations[0].uid);
 		}
 	}, [conversations, selectedClientUid]);
+
+	useEffect(() => {
+		if (!selectedClientUid) {
+			return;
+		}
+
+		setUnreadCounts((previous) => {
+			if (!(selectedClientUid in previous)) {
+				return previous;
+			}
+
+			const next = { ...previous };
+			delete next[selectedClientUid];
+			return next;
+		});
+	}, [selectedClientUid]);
+
+	function handleSelectClient(clientUid: string) {
+		setSelectedClientUid(clientUid);
+	}
 
 	useEffect(() => {
 		if (!db || !isAdminAuthenticated || !selectedClientUid) {
@@ -256,6 +363,46 @@ export default function CounselorPage() {
 			});
 	}, [allMessages, isAdminAuthenticated, selectedClientUid]);
 
+	const counselorMessages = useMemo<ChatMessageItem[]>(() => {
+		return selectedThread.map((item) => {
+			const isCounselor = ADMIN_USERS.some((u) => u.uid === item.uid) || item.uid === "ai_counselor";
+			let senderLabel = "Client";
+			if (item.uid === "ai_counselor") {
+				senderLabel = "Counselor (AI)";
+			} else if (isCounselor) {
+				senderLabel = "Counselor";
+			}
+
+			return {
+				id: item.id,
+				text: item.message,
+				senderLabel,
+				timeLabel: item.createdAt ? timeFormatter.format(item.createdAt.toDate()) : "",
+				isOwn: isCounselor,
+			};
+		});
+	}, [selectedThread, timeFormatter]);
+
+	// Computed date separator for the first message
+	const dateSeparator = useMemo(() => {
+		if (selectedThread.length === 0) return "";
+		const first = selectedThread[0];
+		if (!first.createdAt) return "";
+		const d = first.createdAt.toDate();
+		const today = new Date();
+		const isToday = d.toDateString() === today.toDateString();
+		const label = isToday ? "Today" : d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+		return `${label} · ${timeFormatter.format(d)}`;
+	}, [selectedThread, timeFormatter]);
+
+	// Start time of the conversation
+	const conversationStartTime = useMemo(() => {
+		if (selectedThread.length === 0) return "";
+		const first = selectedThread[0];
+		if (!first.createdAt) return "";
+		return timeFormatter.format(first.createdAt.toDate());
+	}, [selectedThread, timeFormatter]);
+
 	async function sendReply() {
 		if (!db) {
 			setStatus("Firestore not configured.");
@@ -266,19 +413,49 @@ export default function CounselorPage() {
 			return;
 		}
 
+		const text = draftMessage.trim();
+
 		try {
 			setIsSending(true);
-			await addDoc(collection(db, "chat_messages"), {
+
+			// Auto-switch to counselor mode when sending a reply (so AI stops responding)
+			if (selectedHandlerMode !== "counselor") {
+				await setDoc(
+					doc(db, "chat_sessions", selectedClientUid),
+					{
+						clientUid: selectedClientUid,
+						handlerMode: "counselor",
+						changedBy: adminUid,
+						changedAt: serverTimestamp(),
+					},
+					{ merge: true },
+				);
+			}
+
+			const docRef = await addDoc(collection(db, "chat_messages"), {
 				uid: adminUid,
 				clientUid: selectedClientUid,
-				message: draftMessage.trim(),
+				message: text,
 				source: "counselor_page",
 				channelType: "counselor",
 				createdAt: serverTimestamp(),
 			});
+
+			// Optimistically add the sent message so it appears instantly
+			setAllMessages((prev) => [
+				...prev,
+				{
+					id: docRef.id,
+					uid: adminUid,
+					clientUid: selectedClientUid,
+					message: text,
+					createdAt: Timestamp.now(),
+				},
+			]);
 			setDraftMessage("");
 			setStatus("Reply sent.");
-			await loadMessages();
+			// Let the polling interval reconcile with server data
+			void loadMessages();
 		} catch (error) {
 			setStatus(error instanceof Error ? error.message : "Failed to send reply.");
 		} finally {
@@ -315,175 +492,85 @@ export default function CounselorPage() {
 
 	if (!isAdminAuthenticated) {
 		return (
-			<main className="mx-auto flex min-h-screen w-full max-w-md items-center px-6 py-12">
-				<section className="w-full rounded-xl border border-black/20 p-6 dark:border-white/20">
-					<h1 className="text-2xl font-semibold">Counselor Admin Login</h1>
-					<p className="mt-2 text-sm text-foreground/70">Use admin credentials to access dashboard.</p>
-					<div className="mt-4 space-y-3">
+			<main className="flex min-h-screen items-center justify-center">
+				<section className="w-full max-w-sm rounded-2xl border border-[#2a3545] bg-[#1a2332] p-6">
+					<div className="mb-5 flex items-center gap-3">
+						<div className="flex h-10 w-10 items-center justify-center rounded-full bg-linear-to-br from-[#7c67ff] to-[#5b38f5]">
+							<span className="text-lg font-bold text-white">💬</span>
+						</div>
+						<div>
+							<h1 className="text-lg font-bold text-white">Counselor</h1>
+							<p className="text-xs text-[#8b93a7]">Crisis Support Assistant</p>
+						</div>
+					</div>
+					<p className="mb-4 text-sm text-[#8b93a7]">Sign in with admin credentials to access the dashboard.</p>
+					<div className="space-y-3">
 						<input
 							type="text"
 							placeholder="Username"
 							value={loginUsername}
 							onChange={(event) => setLoginUsername(event.target.value)}
-							className="w-full rounded-md border border-black/20 px-3 py-2 dark:border-white/20"
+							className="w-full rounded-lg border border-[#2a3545] bg-[#0f1724] px-3 py-2.5 text-sm text-white placeholder:text-[#64748b] outline-none focus:border-[#5b6fff]"
 						/>
 						<input
 							type="password"
 							placeholder="Password"
 							value={loginPassword}
 							onChange={(event) => setLoginPassword(event.target.value)}
-							className="w-full rounded-md border border-black/20 px-3 py-2 dark:border-white/20"
+							className="w-full rounded-lg border border-[#2a3545] bg-[#0f1724] px-3 py-2.5 text-sm text-white placeholder:text-[#64748b] outline-none focus:border-[#5b6fff]"
 						/>
 						<button
 							type="button"
 							onClick={handleAdminLogin}
-							className="w-full rounded-md border border-black bg-black px-4 py-2 font-semibold text-white dark:border-white dark:bg-white dark:text-black"
+							className="w-full rounded-lg bg-linear-to-b from-[#5b6fff] to-[#4f5dff] py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
 						>
-							Login
+							Sign in
 						</button>
-						{loginError ? <p className="text-sm text-foreground/70">{loginError}</p> : null}
+						{loginError ? (
+							<p className="text-sm text-[#ef4444]">{loginError}</p>
+						) : null}
 					</div>
 				</section>
 			</main>
 		);
 	}
 
+	const statusBannerText =
+		selectedHandlerMode === "ai" ? "AI is actively handling replies" : "Counselor is handling replies";
+
+	const statusBannerVariant = selectedHandlerMode === "ai" ? "success" : "info";
+
 	return (
-		<main className="mx-auto min-h-screen w-full max-w-400 px-4 py-6 md:px-6">
-			<div className="grid min-h-[86vh] grid-cols-1 overflow-hidden rounded-xl border border-black/20 bg-background md:grid-cols-[420px_1fr] dark:border-white/20">
-				<aside className="border-b border-black/20 p-3 md:border-b-0 md:border-r dark:border-white/20">
-					<div className="flex items-center justify-between gap-2 rounded-md border border-black/20 p-4 dark:border-white/20">
-						<h1 className="text-4xl font-semibold tracking-tight">Crisis Counselor Assistant</h1>
-						<button
-							type="button"
-							onClick={handleAdminLogout}
-							className="rounded-md border border-black/20 px-3 py-2 text-xs font-semibold dark:border-white/20"
-						>
-							Logout
-						</button>
-					</div>
-
-					<div className="mt-2 grid grid-cols-2 border border-black/20 dark:border-white/20">
-						<button
-							type="button"
-							onClick={() => setSelectedTab("transcript")}
-							className={`px-4 py-3 text-left text-3xl font-semibold ${
-								selectedTab === "transcript"
-									? "bg-black text-white dark:bg-white dark:text-black"
-									: "bg-background text-foreground"
-							}`}
-						>
-							Transcript
-						</button>
-						<button
-							type="button"
-							onClick={() => setSelectedTab("chat")}
-							className={`border-l border-black/20 px-4 py-3 text-left text-3xl font-semibold dark:border-white/20 ${
-								selectedTab === "chat"
-									? "bg-black text-white dark:bg-white dark:text-black"
-									: "bg-background text-foreground"
-							}`}
-						>
-							Chat
-						</button>
-					</div>
-
-					<div className="mt-2">
-						{selectedTab === "chat" ? (
-							<ChatLog
-								rows={conversations}
-								status={status}
-								isLoading={isLoadingMessages}
-								onRefresh={() => void loadMessages()}
-								onSelect={setSelectedClientUid}
-								selectedClientUid={selectedClientUid}
-							/>
-						) : (
-							<Transcript />
-						)}
-					</div>
-				</aside>
-
-				<section className="min-h-75 border-t border-black/20 p-4 md:border-t-0 dark:border-white/20">
-					{selectedTab === "chat" ? (
-						<div className="flex h-full flex-col rounded-lg border border-black/20 dark:border-white/20">
-								<header className="border-b border-black/15 px-4 py-3 text-sm font-semibold dark:border-white/15">
-									{selectedClientUid ? `Conversation: ${selectedClientUid}` : "Select a conversation"}
-								</header>
-								{selectedClientUid ? (
-									<Agentchoices
-										key={`${selectedClientUid}:${selectedHandlerMode}:${isUpdatingHandlerMode}`}
-										mode={selectedHandlerMode}
-										disabled={isUpdatingHandlerMode}
-										onSelectCounselor={() => void updateHandlerMode("counselor")}
-										statusText={handlerModeStatus}
-									/>
-								) : null}
-
-								<div className="min-h-105 flex-1 space-y-3 overflow-y-auto px-4 py-4">
-									{selectedClientUid ? (
-										selectedThread.length === 0 ? (
-											<p className="text-sm text-foreground/70">No messages yet.</p>
-										) : (
-											selectedThread.map((item) => {
-													const isCounselor = ADMIN_USERS.some((u) => u.uid === item.uid) || item.uid === "ai_counselor";
-												return (
-													<div
-														key={item.id}
-														className={`flex ${isCounselor ? "justify-end" : "justify-start"}`}
-													>
-													<div
-														className={`max-w-[75%] rounded-2xl border px-3 py-2 text-sm ${
-															isCounselor
-																? "border-black bg-black text-white dark:border-white dark:bg-white dark:text-black"
-																: "border-black/20 bg-background dark:border-white/20"
-														}`}
-													>
-														<p>{item.message || "(empty)"}</p>
-														{item.createdAt ? (
-															<p className="mt-1 text-[11px] opacity-70">
-																{timeFormatter.format(item.createdAt.toDate())}
-															</p>
-														) : null}
-													</div>
-												</div>
-											);
-										})
-									)
-								) : (
-									<p className="text-sm text-foreground/70">Choose a client from the left to start replying.</p>
-								)}
-							</div>
-
-							<footer className="border-t border-black/15 p-3 dark:border-white/15">
-								<div className="flex items-end gap-2">
-									<textarea
-										className="h-20 flex-1 resize-none rounded-md border border-black/20 bg-transparent px-3 py-2 text-sm outline-none dark:border-white/20"
-										placeholder="Type a reply..."
-										value={draftMessage}
-										onChange={(event) => setDraftMessage(event.target.value)}
-										onKeyDown={(event) => {
-											if (event.key === "Enter" && !event.shiftKey) {
-												event.preventDefault();
-												void sendReply();
-											}
-										}}
-									/>
-									<button
-										type="button"
-										onClick={() => void sendReply()}
-										disabled={isSending || !selectedClientUid || draftMessage.trim().length === 0}
-										className="rounded-md border border-black bg-black px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 dark:border-white dark:bg-white dark:text-black"
-									>
-										{isSending ? "Sending..." : "Send"}
-									</button>
-								</div>
-							</footer>
-						</div>
-					) : (
-						<div className="h-full rounded-lg border border-dashed border-black/25 dark:border-white/25" />
-					)}
-				</section>
+		<main className="h-screen overflow-hidden">
+			<div className="grid h-full grid-cols-1 md:grid-cols-[300px_1fr]">
+				<CounselorSidebar
+					onSignOut={handleAdminLogout}
+					statusText={statusBannerText}
+					statusVariant={statusBannerVariant as "success" | "info"}
+					selectedTab={selectedTab}
+					onTabChange={setSelectedTab}
+					conversationCount={conversations.length}
+					conversations={conversations}
+					unreadCounts={unreadCounts}
+					selectedClientUid={selectedClientUid}
+					onSelectClient={handleSelectClient}
+				/>
+				<CounselorChatPanel
+					selectedClientUid={selectedClientUid}
+					messages={counselorMessages}
+					draftMessage={draftMessage}
+					onDraftChange={setDraftMessage}
+					onSend={() => void sendReply()}
+					isSending={isSending}
+					handlerMode={selectedHandlerMode}
+					isUpdatingHandlerMode={isUpdatingHandlerMode}
+					onTakeOver={() => void updateHandlerMode("counselor")}
+					messageCount={selectedThread.length}
+					startTime={conversationStartTime}
+					riskLevel="low"
+					statusText={`${selectedThread.length} messages loaded · Session active`}
+					dateSeparator={dateSeparator}
+				/>
 			</div>
 		</main>
 	);

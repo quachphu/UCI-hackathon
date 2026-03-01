@@ -10,6 +10,7 @@ export type ConversationRow = {
 
 type ChatlogProps = {
 	rows: ConversationRow[];
+	unreadCounts: Record<string, number>;
 	status: string;
 	isLoading: boolean;
 	onRefresh: () => void;
@@ -19,6 +20,7 @@ type ChatlogProps = {
 
 export default function Chatlog({
 	rows,
+	unreadCounts,
 	status,
 	isLoading,
 	onRefresh,
@@ -27,51 +29,55 @@ export default function Chatlog({
 }: ChatlogProps) {
 
 	return (
-		<section className="rounded-b-xl border border-black/20 dark:border-white/20">
-			<header className="flex items-center justify-between border-b border-black/15 px-3 py-2 dark:border-white/15">
+		<section className="rounded-b-xl border border-black/20 bg-white text-black">
+			<header className="flex items-center justify-between border-b border-black/15 bg-white px-3 py-2">
 				<h2 className="text-[42px] font-semibold leading-none">All Messages</h2>
-				<button
-					type="button"
-					onClick={onRefresh}
-					disabled={isLoading}
-					className="rounded border border-black/30 px-2 py-1 text-xs font-medium hover:bg-black hover:text-white disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/30 dark:hover:bg-white dark:hover:text-black"
-				>
-					{isLoading ? "Refreshing..." : "Refresh"}
-				</button>
 			</header>
 
 			<div className="max-h-[64vh] overflow-y-auto p-2">
 				{rows.length === 0 ? (
-					<p className="rounded border border-black/10 p-3 text-sm text-foreground/70 dark:border-white/10">
+					<p className="rounded border border-black/10 p-3 text-sm text-black/70">
 						No client messages found.
 					</p>
 				) : (
 					<ul className="space-y-2">
 						{rows.map((row) => (
 							<li key={row.uid}>
+								{(() => {
+									const unreadCount = unreadCounts[row.uid] ?? 0;
+									return (
 								<button
 									type="button"
 									onClick={() => onSelect(row.uid)}
-									className={`flex w-full items-center gap-3 rounded-lg border px-3 py-3 text-left ${
+									className={`flex w-full items-center gap-3 rounded-lg border px-3 py-3 text-left transition-transform duration-200 hover:-translate-y-1 hover:scale-[1.01] active:translate-y-0 active:scale-100 ${
 										selectedClientUid === row.uid
-											? "border-black bg-black text-white dark:border-white dark:bg-white dark:text-black"
-											: "border-black/15 dark:border-white/15"
+											? "border-transparent bg-linear-to-b from-[#6b4dff] to-[#5a33f0] text-white"
+											: "border-black/15 bg-white text-black"
 									}`}
 								>
-									<div className="h-12 w-12 rounded-full border border-black/20 bg-black/5 dark:border-white/20 dark:bg-white/5" />
+									<div className="h-12 w-12 rounded-full border border-black/20 bg-black/5" />
 									<div className="min-w-0 flex-1">
 										<p className="truncate text-2xl font-semibold leading-tight">{row.label}</p>
 										<p className="truncate text-sm opacity-80">{row.lastMessage}</p>
 									</div>
-									<p className="shrink-0 text-xs opacity-80">{row.timeLabel || ""}</p>
+									<div className="flex shrink-0 items-center gap-2">
+										<p className="text-xs opacity-80">{row.timeLabel || ""}</p>
+										{unreadCount > 0 ? (
+											<span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-[#ff4d4f] px-2 text-xs font-semibold text-white">
+												{unreadCount > 99 ? "99+" : unreadCount}
+											</span>
+										) : null}
+									</div>
 								</button>
+									);
+								})()}
 							</li>
 						))}
 					</ul>
 				)}
 			</div>
 
-			<p className="border-t border-black/10 px-3 py-2 text-xs text-foreground/65 dark:border-white/10">
+			<p className="border-t border-black/10 px-3 py-2 text-xs text-black/65">
 				{status}
 			</p>
 		</section>
