@@ -62,12 +62,19 @@ class Model:
             f"{msg.type}: {msg.content}" for msg in history.messages
         )
 
-        summary_prompt = f"""Summarize the following conversation concisely, 
-        highlighting key concerns, emotions, and any action items:
-        {conversation_text}
-        Rank it with severity: [severe, moderate, normal]
-        Type of incident: [Self-harm, suicidal, Depressed, Anxiety, Asking for resources]
-        In the json format please"""
+        summary_prompt = f"""{
+            "summary": "Brief 3-5 sentence overview of the situation",
+            "main_issue": "Primary problem the caller is facing",
+            "emotional_state": "Detected emotional tone (e.g., anxious, depressed, panicked, calm)",
+            "risk_level": "low | medium | high | critical",
+            "risk_reasoning": "Why this risk level was assigned",
+            "immediate_needs": "What the caller needs right now",
+            "location_mentioned": "Any location mentioned or null",
+            "follow_up_recommendation": "Suggested next action for counselor"
+            }
+
+            Conversation:
+            {conversation_text}"""
 
         response = await self.model.ainvoke([("human", summary_prompt)])
         return response.content
