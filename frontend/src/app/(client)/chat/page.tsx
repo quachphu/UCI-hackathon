@@ -277,7 +277,9 @@ export default function ClientChatPage() {
 		if (handlerModeError) {
 			return `Handler mode issue: ${handlerModeError}`;
 		}
-		return handlerMode === "counselor" ? "Counselor is handling replies." : "AI is handling replies.";
+		return handlerMode === "counselor"
+			? "Counselor mode active (AI requests still sent)."
+			: "AI mode active.";
 	}, [handlerMode, handlerModeError]);
 
 	// ── Build rendered messages (+ streaming bubble) ───────────
@@ -420,11 +422,8 @@ export default function ClientChatPage() {
 				createdAt: serverTimestamp(),
 			});
 
-			if (handlerMode === "ai") {
-				await streamAIResponse(text);
-			} else {
-				setStatus("Waiting for counselor reply.");
-			}
+			setStatus("Sending to AI...");
+			await streamAIResponse(text);
 		} catch (error) {
 			setStatus(error instanceof Error ? error.message : "Failed to send message.");
 		} finally {
