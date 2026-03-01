@@ -8,6 +8,7 @@ import {
 	getDocs,
 	limit,
 	onSnapshot,
+	orderBy,
 	query,
 	serverTimestamp,
 	setDoc,
@@ -19,6 +20,8 @@ import CounselorSidebar, {
 } from "@/app/components/couselor/CounselorSidebar";
 import CounselorChatPanel from "@/app/components/couselor/CounselorChatPanel";
 import Transcript from "@/app/components/couselor/Transcript";
+import TranscriptDetailView from "@/app/components/couselor/TranscriptDetailView";
+import type { TranscriptSession } from "@/app/components/couselor/TranscriptDetailView";
 import type { ChatMessageItem } from "@/app/components/chat/MessageList";
 import type { RiskLevel } from "@/app/components/couselor/RiskBadge";
 import type { HandlerMode } from "@/lib/chat-types";
@@ -79,6 +82,8 @@ export default function CounselorPage() {
 	const [handlerModeStatus, setHandlerModeStatus] = useState("AI handles replies by default.");
 	const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
 	const [riskLevels, setRiskLevels] = useState<Record<string, RiskLevel>>({});
+	const [selectedTranscriptSession, setSelectedTranscriptSession] = useState<TranscriptSession | null>(null);
+	const [transcriptSessions, setTranscriptSessions] = useState<TranscriptSession[]>([]);
 	const seenClientMessageIdsRef = useRef<Set<string>>(new Set());
 	const didInitializeSeenClientMessagesRef = useRef(false);
 
@@ -97,6 +102,73 @@ export default function CounselorPage() {
 			setIsAdminAuthenticated(true);
 			const storedUid = window.localStorage.getItem("admin_uid") ?? "";
 			setAdminUid(storedUid);
+		}
+	}, []);
+
+	// ── Real-time Firestore listener for call_transcripts ──
+	useEffect(() => {
+		if (!db || !isAdminAuthenticated) return;
+		const q = query(collection(db, "call_transcripts"), orderBy("createdAt", "desc"));
+		const unsub = onSnapshot(
+			q,
+			(snapshot) => {
+				const sessions: TranscriptSession[] = snapshot.docs.map((docSnap) => {
+					const data = docSnap.data();
+					const createdAt = data.createdAt as Timestamp | undefined;
+					return {
+						sessionId: docSnap.id,
+						label: data.label ?? `Call Session ${docSnap.id}`,
+						subtitle: `${(data.messages as unknown[])?.length ?? 0} messages`,
+						dateLabel: createdAt
+							? createdAt.toDate().toLocaleString("en-US", {
+									month: "short",
+									day: "numeric",
+									hour: "numeric",
+									minute: "2-digit",
+							  })
+							: undefined,
+						messages: (data.messages as { role: string; content: string }[]) ?? [],
+					};
+				});
+				setTranscriptSessions(sessions);
+			},
+			(err) => {
+				console.error("[Transcripts] onSnapshot error:", err);
+			},
+		);
+		return () => unsub();
+	}, [isAdminAuthenticated]);
+
+	// ── Fetch all sessions from backend and commit to Firestore ──
+	const fetchAndCommitTranscripts = useCallback(async () => {
+		if (!db) throw new Error("Firestore not configured");
+
+		// 1. Get all session IDs from backend
+		const sessionsRes = await fetch("http://localhost:1000/llm/sessions");
+		if (!sessionsRes.ok) throw new Error(`Failed to list sessions: ${sessionsRes.status}`);
+		const { sessions: sessionIds } = (await sessionsRes.json()) as { sessions: string[] };
+
+		// 2. For each session, fetch history and commit to Firestore
+		for (const sessionId of sessionIds) {
+			const historyRes = await fetch(`http://localhost:1000/llm/history/${sessionId}`);
+			if (!historyRes.ok) continue;
+			const data = await historyRes.json();
+			const messages = data.messages ?? [];
+			if (messages.length === 0) continue;
+
+			// Commit to Firestore (merge to avoid overwriting createdAt on re-fetch)
+			await setDoc(
+				doc(db, "call_transcripts", sessionId),
+				{
+					sessionId,
+					label: `Call Session ${sessionId}`,
+					messages,
+					messageCount: messages.length,
+					createdAt: serverTimestamp(),
+					status: "ended",
+				},
+				{ merge: true },
+			);
 		}
 	}, []);
 
@@ -572,27 +644,41 @@ export default function CounselorPage() {
 					riskLevels={riskLevels}
 					selectedClientUid={selectedClientUid}
 					onSelectClient={handleSelectClient}
-					transcriptContent={<Transcript />}
-				/>
-				<CounselorChatPanel
-					selectedClientUid={selectedClientUid}
-					messages={counselorMessages}
-					draftMessage={draftMessage}
-					onDraftChange={setDraftMessage}
-					onSend={() => void sendReply()}
-					isSending={isSending}
-					handlerMode={selectedHandlerMode}
-					isUpdatingHandlerMode={isUpdatingHandlerMode}
-					onTakeOver={() => void updateHandlerMode("counselor")}
-					messageCount={selectedThread.length}
-					startTime={conversationStartTime}
-					riskLevel={riskLevels[selectedClientUid] ?? "low"}
-					onRiskLevelChange={(level) =>
-						setRiskLevels((prev) => ({ ...prev, [selectedClientUid]: level }))
+					transcriptContent={
+						<Transcript
+							sessions={transcriptSessions}
+							onSelectSession={(session) => setSelectedTranscriptSession(session)}
+							selectedSessionId={selectedTranscriptSession?.sessionId}
+							onFetchAndCommit={fetchAndCommitTranscripts}
+						/>
 					}
-					statusText={`${selectedThread.length} messages loaded · Session active`}
-					dateSeparator={dateSeparator}
 				/>
+				{selectedTranscriptSession ? (
+					<TranscriptDetailView
+						session={selectedTranscriptSession}
+						onBack={() => setSelectedTranscriptSession(null)}
+					/>
+				) : (
+					<CounselorChatPanel
+						selectedClientUid={selectedClientUid}
+						messages={counselorMessages}
+						draftMessage={draftMessage}
+						onDraftChange={setDraftMessage}
+						onSend={() => void sendReply()}
+						isSending={isSending}
+						handlerMode={selectedHandlerMode}
+						isUpdatingHandlerMode={isUpdatingHandlerMode}
+						onTakeOver={() => void updateHandlerMode("counselor")}
+						messageCount={selectedThread.length}
+						startTime={conversationStartTime}
+						riskLevel={riskLevels[selectedClientUid] ?? "low"}
+						onRiskLevelChange={(level) =>
+							setRiskLevels((prev) => ({ ...prev, [selectedClientUid]: level }))
+						}
+						statusText={`${selectedThread.length} messages loaded · Session active`}
+						dateSeparator={dateSeparator}
+					/>
+				)}
 			</div>
 		</main>
 	);

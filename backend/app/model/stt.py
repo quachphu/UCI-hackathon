@@ -12,12 +12,13 @@ BUFFER_MS = 100
 BUFFER_BYTES = BUFFER_MS * BYTES_PER_MS     
 
 class AssemblyAIStreamerTwilio(StreamingClient):
-    def __init__(self, api_key: str,model,loop,ws,stream_sid):
+    def __init__(self, api_key: str,model,loop,ws,stream_sid,call_session_id="1"):
         super().__init__(StreamingClientOptions(api_key=api_key, api_host="streaming.assemblyai.com"))
 
         self.model = model
         self._ws = ws
         self._stream_sid = stream_sid
+        self._call_session_id = call_session_id
 
         self.on(StreamingEvents.Begin, self.on_begin)
         self.on(StreamingEvents.Turn, self.on_turn)
@@ -72,7 +73,7 @@ class AssemblyAIStreamerTwilio(StreamingClient):
             txt = (event.transcript or "").strip()
             if txt:
                 asyncio.run_coroutine_threadsafe(
-                    self._handle_turn(txt,"1"),self._loop
+                    self._handle_turn(txt, self._call_session_id), self._loop
                 )
 
     async def _handle_turn(self, txt: str, session_id: str):

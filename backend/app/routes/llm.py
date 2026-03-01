@@ -44,6 +44,14 @@ async def history(session_id: str,model:Model=Depends(get_model)):
     messages = await get_chat_history(session_id,model)
     return {"session_id": session_id, "messages": messages}
 
+@llm_router.get("/sessions")
+async def list_sessions(model:Model=Depends(get_model)):
+    """List all session IDs that have conversation history."""
+    session_ids = list(model.history.keys())
+    # Filter out the warmup session
+    session_ids = [sid for sid in session_ids if sid != "-"]
+    return {"sessions": session_ids}
+
 @llm_router.get("/summary/{session_id}")
 async def get_summary(session_id,model:Model=Depends(get_model)):
     summary = await model.get_summary(session_id)

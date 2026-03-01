@@ -11,6 +11,8 @@ dotenv.load_dotenv()
 async def stream_and_transcribe(ws,model):
     await ws.accept()
 
+    aai_streamer = None
+    call_session_id = None
 
     # Run start() in a thread — it calls connect() which blocks    
     try:
@@ -21,13 +23,17 @@ async def stream_and_transcribe(ws,model):
             event = data.get("event")
             if event == "start":
                 stream_id = data['start']['streamSid']
-                print(f"[Twilio] start: streamSid={stream_id}")
+                # Extract custom parameters passed from TwiML <Parameter>
+                custom_params = data['start'].get('customParameters', {})
+                call_session_id = custom_params.get('call_session_id', stream_id)
+                print(f"[Twilio] start: streamSid={stream_id}, call_session_id={call_session_id}")
 
                 aai_streamer = AssemblyAIStreamerTwilio(api_key=os.getenv("ASSEMBLYAI_API_KEY", ""),
                                             model=model,
                                             loop = asyncio.get_event_loop(),
                                             ws=ws,
-                                            stream_sid=stream_id)
+                                            stream_sid=stream_id,
+                                            call_session_id=call_session_id)
                 aai_streamer.start()
 
             elif event == "media":
@@ -36,7 +42,7 @@ async def stream_and_transcribe(ws,model):
                     aai_streamer.send_audio(audio_bytes)
 
             elif event == "stop":
-                print("[Twilio] stop received")
+                print(f"[Twilio] stop received, call_session_id={call_session_id}")
                 if aai_streamer:
                     aai_streamer.stop()
                 break
@@ -49,3 +55,5 @@ async def stream_and_transcribe(ws,model):
         print(f"[Twilio] Error: {e}")
         if aai_streamer:
             aai_streamer.stop()
+
+    return call_session_id

@@ -1,27 +1,38 @@
 "use client";
 
 import { useState } from "react";
+import TranscriptSessionCard from "./TranscriptSessionCard";
+import type { TranscriptSession } from "./TranscriptDetailView";
 
-interface Message {
-	role: string;
-	content: string;
-}
+export type { TranscriptSession };
 
-export default function Transcript() {
-	const [messages, setMessages] = useState<Message[]>([]);
+type TranscriptProps = {
+	/** Transcript sessions from Firestore (real-time) */
+	sessions: TranscriptSession[];
+	/** Called when a session card is clicked so the parent can show the detail view */
+	onSelectSession: (session: TranscriptSession) => void;
+	/** Currently selected session id (for highlighting) */
+	selectedSessionId?: string;
+	/** Called to fetch all sessions from backend and commit them to Firestore */
+	onFetchAndCommit: () => Promise<void>;
+};
+
+export default function Transcript({
+	sessions,
+	onSelectSession,
+	selectedSessionId,
+	onFetchAndCommit,
+}: TranscriptProps) {
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
-	const fetchTranscript = async () => {
+	const handleFetch = async () => {
 		setLoading(true);
 		setError(null);
 		try {
-			const res = await fetch("http://localhost:1000/llm/history/1");
-			if (!res.ok) throw new Error(`Error ${res.status}`);
-			const data = await res.json();
-			setMessages(data.messages ?? []);
+			await onFetchAndCommit();
 		} catch (err: unknown) {
-			setError(err instanceof Error ? err.message : "Failed to fetch transcript");
+			setError(err instanceof Error ? err.message : "Failed to fetch transcripts");
 		} finally {
 			setLoading(false);
 		}
@@ -30,11 +41,10 @@ export default function Transcript() {
 	return (
 		<section className="space-y-3">
 			<button
-				onClick={fetchTranscript}
+				onClick={handleFetch}
 				disabled={loading}
 				className="flex items-center gap-2 rounded-full bg-[#1e293b] px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#334155] disabled:opacity-50"
 			>
-				{/* refresh icon */}
 				<svg
 					xmlns="http://www.w3.org/2000/svg"
 					viewBox="0 0 20 20"
@@ -52,26 +62,28 @@ export default function Transcript() {
 
 			{error && <p className="text-sm text-red-400">{error}</p>}
 
-			{messages.length === 0 && !loading && !error && (
+			{sessions.length === 0 && !loading && !error && (
 				<p className="text-sm text-[#64748b]">No transcripts available.</p>
 			)}
 
-			{messages.length > 0 && (
-				<ul className="space-y-2">
-					{messages.map((msg, i) => (
-						<li
-							key={i}
-							className={`rounded-lg px-3 py-2 text-sm ${
-								msg.role === "user"
-									? "bg-[#1e293b] text-[#cbd5e1]"
-									: "bg-[#243044] text-white"
-							}`}
-						>
-							<span className="font-semibold capitalize">{msg.role}: </span>
-							{msg.content}
-						</li>
+			{sessions.length > 0 && (
+				<div className="space-y-0.5">
+					{sessions.map((session) => (
+						<TranscriptSessionCard
+							key={session.sessionId}
+							label={session.label}
+							preview={
+								session.messages.length > 0
+									? session.messages[session.messages.length - 1].content.slice(0, 50)
+									: "No messages"
+							}
+							timeLabel={session.dateLabel}
+							messageCount={session.messages.length}
+							isSelected={selectedSessionId === session.sessionId}
+							onClick={() => onSelectSession(session)}
+						/>
 					))}
-				</ul>
+				</div>
 			)}
 		</section>
 	);
