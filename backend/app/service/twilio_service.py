@@ -12,13 +12,7 @@ async def stream_and_transcribe(ws,model):
     await ws.accept()
 
 
-    # Run start() in a thread — it calls connect() which blocks
-    loop = asyncio.get_event_loop()
-    aai_streamer = AssemblyAIStreamerTwilio(api_key=os.getenv("ASSEMBLYAI_API_KEY", ""),
-                                            model=model,
-                                            loop = loop)
-    await loop.run_in_executor(None, aai_streamer.start)
-
+    # Run start() in a thread — it calls connect() which blocks    
     try:
         while True:
             msg = await ws.receive_text()
@@ -26,27 +20,32 @@ async def stream_and_transcribe(ws,model):
 
             event = data.get("event")
             if event == "start":
-                start = data.get("start", {})
-                print(f"[Twilio] start: streamSid={start.get('streamSid')}")
+                stream_id = data['start']['streamSid']
+                print(f"[Twilio] start: streamSid={stream_id}")
+
+                aai_streamer = AssemblyAIStreamerTwilio(api_key=os.getenv("ASSEMBLYAI_API_KEY", ""),
+                                            model=model,
+                                            loop = asyncio.get_event_loop(),
+                                            ws=ws,
+                                            stream_sid=stream_id)
+                aai_streamer.start()
 
             elif event == "media":
-                media = data.get("media", {})
-                payload_b64 = media.get("payload")
-                if payload_b64:
-                    audio_bytes = base64.b64decode(payload_b64)
+                if aai_streamer:
+                    audio_bytes = base64.b64decode(data["media"]["payload"])
                     aai_streamer.send_audio(audio_bytes)
 
             elif event == "stop":
                 print("[Twilio] stop received")
+                if aai_streamer:
+                    aai_streamer.stop()
                 break
 
     except WebSocketDisconnect:
-        print("[Twilio] WebSocket disconnected")
+        print("[Twilio] Disconnected")
+        if aai_streamer:
+            aai_streamer.stop()
     except Exception as e:
-        print("[Server] Error:", e)
-    finally:
-        aai_streamer.stop()
-        try:
-            await ws.close()
-        except Exception:
-            pass
+        print(f"[Twilio] Error: {e}")
+        if aai_streamer:
+            aai_streamer.stop()

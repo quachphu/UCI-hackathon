@@ -1,9 +1,10 @@
-import threading, asyncio
+import threading, asyncio, base64,json
 import assemblyai as aai
 from assemblyai.streaming.v3 import (
     StreamingClient, StreamingClientOptions, StreamingParameters,
     StreamingEvents, BeginEvent, TurnEvent, TerminationEvent, StreamingError
 )
+from app.model.tts import stream_tts_from_llm
 
 TWILIO_SAMPLE_RATE = 8000  
 BYTES_PER_MS = TWILIO_SAMPLE_RATE // 1000  
@@ -11,10 +12,12 @@ BUFFER_MS = 100
 BUFFER_BYTES = BUFFER_MS * BYTES_PER_MS     
 
 class AssemblyAIStreamerTwilio(StreamingClient):
-    def __init__(self, api_key: str,model,loop):
+    def __init__(self, api_key: str,model,loop,ws,stream_sid):
         super().__init__(StreamingClientOptions(api_key=api_key, api_host="streaming.assemblyai.com"))
 
         self.model = model
+        self._ws = ws
+        self._stream_sid = stream_sid
 
         self.on(StreamingEvents.Begin, self.on_begin)
         self.on(StreamingEvents.Turn, self.on_turn)
@@ -74,8 +77,18 @@ class AssemblyAIStreamerTwilio(StreamingClient):
 
     async def _handle_turn(self, txt: str, session_id: str):
         try:
-            async for chunk in self.model.converse_stream(user_input=txt, session_id=session_id):
-                print(chunk)
+            async for audio_chunk in stream_tts_from_llm(self.model.converse_stream(user_input=txt, session_id=session_id)):
+                     payload = base64.b64encode(audio_chunk).decode("utf-8")
+                     await self._ws.send_text(json.dumps({
+                        "event": "media",
+                        "streamSid": self._stream_sid,
+                        "media": {"payload": payload},
+                        }))
+                     await self._ws.send_text(json.dumps({
+                        "event": "mark",
+                        "streamSid": self._stream_sid,
+                        "mark": {"name": "response_end"},
+                    }))
         except Exception as e:
             print(f"[AssemblyAI] converse_stream error: {e}")
             raise
