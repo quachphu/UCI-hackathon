@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import MessageInput from "./MessageInput";
 import MessageList, { type ChatMessageItem } from "./MessageList";
 
@@ -52,6 +52,7 @@ export default function ChatWindow({
 	theme = "light",
 }: ChatWindowProps) {
 	const s = THEME_STYLES[theme];
+	const [showCallBanner, setShowCallBanner] = useState(false);
 
 	// ── Auto-scroll logic ──────────────────────────────────────
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -87,11 +88,27 @@ export default function ChatWindow({
 					<p className={s.statusText}>{statusText ?? "Connected"}</p>
 				</div>
 				<div className="flex items-center gap-2 text-sm">
-					<button type="button" className={s.headerBtn}>Video</button>
-					<button type="button" className={s.headerBtn}>Call</button>
-					<button type="button" className={s.headerBtn}>More</button>
+					<button type="button" className={s.headerBtn} onClick={() => setShowCallBanner((v) => !v)}>Call</button>
 				</div>
 			</header>
+
+			{showCallBanner && (
+				<div className="flex items-center justify-between gap-3 border-b border-[#2a3545] bg-[#1a2332] px-4 py-2.5">
+					<div className="flex items-center gap-2">
+						<span className="text-lg">📞</span>
+						<p className="text-sm font-medium text-white">
+							Dial this number: <a href="tel:3373703540" className="font-bold text-[#5b6fff] underline">(337) 370-3540</a>
+						</p>
+					</div>
+					<button
+						type="button"
+						onClick={() => setShowCallBanner(false)}
+						className="flex h-6 w-6 items-center justify-center rounded-md text-[#8b93a7] transition-colors hover:bg-[#243044] hover:text-white"
+					>
+						✕
+					</button>
+				</div>
+			)}
 
 			<div ref={scrollContainerRef} onScroll={handleScroll} className={s.body}>
 				<MessageList messages={messages} emptyText={emptyText} theme={theme} />

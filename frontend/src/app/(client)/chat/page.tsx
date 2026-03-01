@@ -296,7 +296,7 @@ export default function ClientChatPage() {
 		const list: ChatMessageItem[] = chatMessages.map((item) => {
 			let senderLabel = "Client";
 			if (item.uid === activeClientUid) senderLabel = "Me";
-			else if (item.uid === "ai_counselor") senderLabel = "AI Counselor";
+			else if (item.uid === "ai_counselor") senderLabel = "CrisisLine AI Agent";
 			else if (item.uid?.startsWith("admin_")) senderLabel = "Counselor";
 			else if (item.uid === "counselor_local") senderLabel = "Counselor";
 
@@ -314,7 +314,7 @@ export default function ClientChatPage() {
 			list.push({
 				id: "__streaming__",
 				text: streamingText + " ▍",
-				senderLabel: "AI Counselor",
+				senderLabel: "CrisisLine AI Agent",
 				isOwn: false,
 			});
 		}
@@ -448,7 +448,7 @@ export default function ClientChatPage() {
 				onInputChange={setMessage}
 				onSend={sendMessage}
 				isSending={isSending || isStreaming}
-				emptyText="No messages yet. Say something to start chatting with the AI counselor."
+				emptyText="No messages yet. Say something to start chatting with the CrisisLine AI Agent."
 				theme="dark"
 			/>
 		</main>

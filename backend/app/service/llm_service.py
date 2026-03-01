@@ -26,5 +26,11 @@ async def stream_response(user_input: str, session_id: str,model):
 async def get_chat_history(session_id: str,model) -> list[dict]:
     """Return the full conversation history for a session."""
     history = model.get_session_history(session_id)
-    return [{"role": msg.type, "content": msg.content} for msg in history.messages]
+    def normalize_role(msg_type: str) -> str:
+        if "ai" in msg_type.lower():
+            return "ai"
+        if "human" in msg_type.lower():
+            return "Client"
+        return msg_type
+    return [{"role": normalize_role(msg.type), "content": msg.content} for msg in history.messages]
 

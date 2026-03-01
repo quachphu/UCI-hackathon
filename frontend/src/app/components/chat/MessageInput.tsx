@@ -48,18 +48,6 @@ export default function MessageInput({
 	return (
 		<div className={s.wrapper}>
 			<div className="flex items-end gap-2">
-				<div className={s.icons}>
-					<button type="button" className="leading-none" aria-label="Emoji">
-						☺
-					</button>
-					<button type="button" className="leading-none" aria-label="Attach">
-						📎
-					</button>
-					<button type="button" className="leading-none" aria-label="Pin">
-						📌
-					</button>
-				</div>
-
 				<textarea
 					className={s.textarea}
 					rows={1}

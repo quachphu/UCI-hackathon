@@ -40,7 +40,7 @@ function speakerName(role: string): string {
 			return "Client";
 		case "assistant":
 		case "ai":
-			return "AI Counselor";
+			return "CrisisLine AI Agent";
 		default:
 			return role;
 	}
