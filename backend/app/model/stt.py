@@ -60,9 +60,10 @@ class AssemblyAIStreamerTwilio(StreamingClient):
         print(f"[AssemblyAI] Session started: {event.id}")
 
     def on_turn(self, client: "StreamingClient", event: TurnEvent):
-        txt = (event.transcript or "").strip()
-        if txt:
-            print(txt)
+        if event.end_of_turn and event.turn_is_formatted:
+            txt = (event.transcript or "").strip()
+            if txt:
+                print(txt)
 
     def on_terminated(self, client: "StreamingClient", event: TerminationEvent):
         print(f"[AssemblyAI] Session terminated ({event.audio_duration_seconds}s processed)")
