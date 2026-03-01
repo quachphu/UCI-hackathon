@@ -19,25 +19,25 @@ export default function Agentchoices({
 	const [isConfirmingCounselorTakeover, setIsConfirmingCounselorTakeover] = useState(false);
 
 	return (
-		<section className="border-b border-black/15 px-4 py-3 dark:border-white/15">
-			<p className="text-xs font-semibold uppercase tracking-wide text-foreground/70">Reply Handler</p>
+		<section className="border-b border-black/15 bg-white px-4 py-3 text-black">
+			<p className="text-xs font-semibold uppercase tracking-wide text-black">Reply Handler</p>
 			<div className="mt-2">
 				<button
 					type="button"
 					onClick={() => setIsConfirmingCounselorTakeover(true)}
 					disabled={disabled || mode === "counselor"}
-					className={`w-full rounded-md border px-3 py-2 text-xs font-semibold ${
+					className={`w-full rounded-md border px-3 py-2 text-xs font-semibold transition-all duration-200 ${
 						mode === "counselor"
-							? "border-black bg-black text-white dark:border-white dark:bg-white dark:text-black"
-							: "border-black/20 dark:border-white/20"
-					} disabled:cursor-not-allowed disabled:opacity-60`}
+							? "border-transparent bg-linear-to-b from-[#7c67ff] to-[#5b38f5] text-white"
+							: "border-black/20 hover:-translate-y-0.5 hover:scale-[1.01] hover:bg-black/5 active:translate-y-0 active:scale-100"
+					} disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:scale-100 disabled:hover:bg-transparent`}
 				>
 					I will answer the chat
 				</button>
 			</div>
 			{isConfirmingCounselorTakeover ? (
 				<div className="mt-2 flex items-center gap-2">
-					<p className="text-xs text-foreground/70">Are you sure?</p>
+					<p className="text-xs text-black/85">Are you sure?</p>
 					<button
 						type="button"
 						onClick={() => {
@@ -45,7 +45,7 @@ export default function Agentchoices({
 							setIsConfirmingCounselorTakeover(false);
 						}}
 						disabled={disabled}
-						className="rounded-md border border-black bg-black px-2 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60 dark:border-white dark:bg-white dark:text-black"
+						className="rounded-md border border-transparent bg-linear-to-b from-[#7c67ff] to-[#5b38f5] px-2 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
 					>
 						Yes
 					</button>
@@ -53,13 +53,13 @@ export default function Agentchoices({
 						type="button"
 						onClick={() => setIsConfirmingCounselorTakeover(false)}
 						disabled={disabled}
-						className="rounded-md border border-black/20 px-2 py-1 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/20"
+						className="rounded-md border border-black/20 px-2 py-1 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-60"
 					>
 						No
 					</button>
 				</div>
 			) : null}
-			{statusText ? <p className="mt-2 text-xs text-foreground/70">{statusText}</p> : null}
+			{statusText ? <p className="mt-2 text-xs text-black/80">{statusText}</p> : null}
 		</section>
 	);
 }

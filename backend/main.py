@@ -51,7 +51,7 @@ app.include_router(twilio_router,prefix="/twilio",tags=['twilio'])
 
 @app.on_event("startup")
 async def startup():
-    model = Model(template = SYSTEM,api_key=os.getenv("OPEN_AI_APIKEY"))
+    model = Model(template = SYSTEM,api_key=os.getenv("OPENAI_API_KEY"))
     await model.get_response(session_id='-',user_input='warmup')
     app.state.model = model
 
