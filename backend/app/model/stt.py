@@ -29,6 +29,7 @@ class AssemblyAIStreamerTwilio(StreamingClient):
         self._lock = threading.Lock()
         self._loop = loop
         self._active = False
+        self._tts_stop_event: asyncio.Event | None = None
 
     def start(self):
         params = StreamingParameters(
@@ -94,17 +95,42 @@ class AssemblyAIStreamerTwilio(StreamingClient):
     # ---- callbacks ----
 
     def on_turn(self, client: "StreamingClient", event: TurnEvent):
-        if event.end_of_turn and event.turn_is_formatted:
-            txt = (event.transcript or "").strip()
-            if txt:
-                asyncio.run_coroutine_threadsafe(
-                    self._handle_turn(txt, self._call_session_id), self._loop
-                )
+        txt = (event.transcript or "").strip()
+        if not txt:
+            return
 
-    async def _handle_turn(self, txt: str, session_id: str):
+        # ---- BARGE-IN: user started speaking → kill current TTS ----
+        if not event.end_of_turn:
+            if self._tts_stop_event is not None and not self._tts_stop_event.is_set():
+                self._tts_stop_event.set()
+                # Tell Twilio to flush any queued audio immediately
+                asyncio.run_coroutine_threadsafe(
+                    self._ws.send_text(json.dumps({
+                        "event": "clear",
+                        "streamSid": self._stream_sid,
+                    })),
+                    self._loop,
+                )
+                print(f"[Barge-in] Interrupted TTS — user said: {txt}")
+            return
+
+        # ---- END OF TURN: user finished speaking → start new TTS ----
+        if event.turn_is_formatted:
+            # Stop any still-running TTS stream
+            if self._tts_stop_event is not None:
+                self._tts_stop_event.set()
+            # Fresh event for the new stream
+            self._tts_stop_event = asyncio.Event()
+            asyncio.run_coroutine_threadsafe(
+                self._handle_turn(txt, self._call_session_id, self._tts_stop_event),
+                self._loop,
+            )
+
+    async def _handle_turn(self, txt: str, session_id: str, stop: asyncio.Event):
         try:
             async for audio_chunk in stream_tts_from_llm(
-                self.model.converse_stream(user_input=txt, session_id=session_id)
+                self.model.converse_stream(user_input=txt, session_id=session_id),
+                stop_event=stop,
             ):
                 payload = base64.b64encode(audio_chunk).decode("utf-8")
                 await self._ws.send_text(json.dumps({

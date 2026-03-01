@@ -17,13 +17,14 @@ def get_ws_url(output_format: str = "ulaw_8000") -> str:
     )
 
 
-async def stream_tts_from_llm(token_stream, output_format: str = "ulaw_8000"):
+async def stream_tts_from_llm(token_stream, output_format: str = "ulaw_8000", stop_event: asyncio.Event | None = None):
     """
     Async generator: yields raw audio chunks from ElevenLabs TTS.
 
     Args:
         token_stream: async iterable of LLM tokens
         output_format: "ulaw_8000" for Twilio, "pcm_16000" for local playback
+        stop_event: if set, stops yielding and tears down the stream
 
     Yields:
         bytes: audio chunks in the requested format
@@ -79,10 +80,18 @@ async def stream_tts_from_llm(token_stream, output_format: str = "ulaw_8000"):
         # Yield audio chunks as they arrive
         try:
             while True:
-                chunk = await audio_queue.get()
+                try:
+                    chunk = await asyncio.wait_for(audio_queue.get(), timeout=0.2)
+                except asyncio.TimeoutError:
+                    if stop_event and stop_event.is_set():
+                        break
+                    continue
                 if chunk is None:
+                    break
+                if stop_event and stop_event.is_set():
                     break
                 yield chunk
         finally:
-            # Wait for both tasks to finish
+            sender_task.cancel()
+            receiver_task.cancel()
             await asyncio.gather(sender_task, receiver_task, return_exceptions=True)
