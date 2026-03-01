@@ -32,7 +32,7 @@ class AssemblyAIStreamerTwilio(StreamingClient):
             encoding=aai.AudioEncoding.pcm_mulaw,        
             format_turns=True,
             speech_model = "universal-streaming-multilingual",
-            language_detection=True
+            language_detection=True,
         )
         self._active = True
         self.connect(params)
