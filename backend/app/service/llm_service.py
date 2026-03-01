@@ -1,6 +1,5 @@
 from app.model.llm import Model
 from dotenv import load_dotenv
-import os
 load_dotenv()
 
 

@@ -8,13 +8,15 @@ import dotenv
 
 dotenv.load_dotenv()
 
-async def stream_and_transcribe(ws):
+async def stream_and_transcribe(ws,model):
     await ws.accept()
 
-    aai_streamer = AssemblyAIStreamerTwilio(api_key=os.getenv("ASSEMBLYAI_API_KEY", ""))
 
     # Run start() in a thread — it calls connect() which blocks
     loop = asyncio.get_event_loop()
+    aai_streamer = AssemblyAIStreamerTwilio(api_key=os.getenv("ASSEMBLYAI_API_KEY", ""),
+                                            model=model,
+                                            loop = loop)
     await loop.run_in_executor(None, aai_streamer.start)
 
     try:

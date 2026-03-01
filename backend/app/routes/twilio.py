@@ -1,6 +1,8 @@
-from fastapi import APIRouter, Request, WebSocket
+from fastapi import APIRouter, Request, WebSocket,Depends
 from fastapi.responses import Response
 from app.service.twilio_service import stream_and_transcribe
+from app.model.llm import Model
+from app.dependencies.model import get_model
 
 
 
@@ -21,5 +23,6 @@ async def twilio_voice(request: Request):
 
 @twilio_router.websocket("/stream")
 async def twilio_stream(ws: WebSocket):
-    stream_and_transcribe(ws)
+    model = ws.app.state.model
+    await stream_and_transcribe(ws,model)
     

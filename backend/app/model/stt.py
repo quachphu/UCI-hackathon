@@ -1,4 +1,4 @@
-import threading
+import threading, asyncio
 import assemblyai as aai
 from assemblyai.streaming.v3 import (
     StreamingClient, StreamingClientOptions, StreamingParameters,
@@ -11,8 +11,10 @@ BUFFER_MS = 100
 BUFFER_BYTES = BUFFER_MS * BYTES_PER_MS     
 
 class AssemblyAIStreamerTwilio(StreamingClient):
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str,model,loop):
         super().__init__(StreamingClientOptions(api_key=api_key, api_host="streaming.assemblyai.com"))
+
+        self.model = model
 
         self.on(StreamingEvents.Begin, self.on_begin)
         self.on(StreamingEvents.Turn, self.on_turn)
@@ -21,6 +23,7 @@ class AssemblyAIStreamerTwilio(StreamingClient):
 
         self._buf = bytearray()
         self._lock = threading.Lock()
+        self._loop = loop
         self._active = False
 
     def start(self):
@@ -63,7 +66,13 @@ class AssemblyAIStreamerTwilio(StreamingClient):
         if event.end_of_turn and event.turn_is_formatted:
             txt = (event.transcript or "").strip()
             if txt:
-                print(txt)
+                asyncio.run_coroutine_threadsafe(
+                    self._handle_turn(txt,1),self._loop
+                )
+
+    async def _handle_turn(self, txt: str, session_id: str):
+        response = await self.model.get_response(user_input=txt, session_id=session_id)
+        print(response)
 
     def on_terminated(self, client: "StreamingClient", event: TerminationEvent):
         print(f"[AssemblyAI] Session terminated ({event.audio_duration_seconds}s processed)")
