@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import type { RiskLevel } from "./RiskBadge";
 import SessionCard from "./SessionCard";
 import StatusBanner, { type StatusBannerVariant } from "./StatusBanner";
 
@@ -31,6 +32,8 @@ type CounselorSidebarProps = {
 	conversations: SidebarConversation[];
 	/** Per-client unread counts */
 	unreadCounts: Record<string, number>;
+	/** Per-client risk levels */
+	riskLevels: Record<string, RiskLevel>;
 	/** Currently selected client UID */
 	selectedClientUid: string;
 	/** Client selection handler */
@@ -48,6 +51,7 @@ export default function CounselorSidebar({
 	conversationCount,
 	conversations,
 	unreadCounts,
+	riskLevels,
 	selectedClientUid,
 	onSelectClient,
 	transcriptContent,
@@ -55,34 +59,34 @@ export default function CounselorSidebar({
 	return (
 		<aside className="flex h-full flex-col border-r border-[#2a3545] bg-[#0f1724]">
 			{/* Header */}
-			<div className="flex items-center gap-3 px-4 py-4">
-				<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-[#7c67ff] to-[#5b38f5]">
-					<span className="text-sm font-bold text-white">💬</span>
+			<div className="flex items-center gap-3 px-5 py-5">
+				<div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-[#7c67ff] to-[#5b38f5]">
+					<span className="text-lg font-bold text-white">💬</span>
 				</div>
 				<div className="min-w-0 flex-1">
-					<h1 className="text-sm font-bold text-white">Counselor</h1>
-					<p className="text-[11px] text-[#8b93a7]">Crisis Support Assistant</p>
+					<h1 className="text-base font-bold text-white">Counselor</h1>
+					<p className="text-xs text-[#8b93a7]">Crisis Support Assistant</p>
 				</div>
 				<button
 					type="button"
 					onClick={onSignOut}
-					className="shrink-0 rounded-lg border border-[#2a3545] px-3 py-1.5 text-[11px] font-medium text-[#8b93a7] transition-colors hover:border-[#ef4444] hover:bg-[#ef4444]/10 hover:text-[#ef4444]"
+					className="shrink-0 rounded-lg border border-[#2a3545] px-3 py-1.5 text-xs font-medium text-[#8b93a7] transition-colors hover:border-[#ef4444] hover:bg-[#ef4444]/10 hover:text-[#ef4444]"
 				>
 					Sign out
 				</button>
 			</div>
 
 			{/* Status banner */}
-			<div className="px-4 pb-3">
+			<div className="px-5 pb-3">
 				<StatusBanner text={statusText} variant={statusVariant} />
 			</div>
 
 			{/* Tabs */}
-			<div className="flex items-center gap-1 px-4 pb-3">
+			<div className="flex items-center gap-1.5 px-5 pb-4">
 				<button
 					type="button"
 					onClick={() => onTabChange("transcript")}
-					className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+					className={`rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
 						selectedTab === "transcript"
 							? "bg-[#243044] text-white"
 							: "text-[#8b93a7] hover:text-white"
@@ -93,7 +97,7 @@ export default function CounselorSidebar({
 				<button
 					type="button"
 					onClick={() => onTabChange("chat")}
-					className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+					className={`flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
 						selectedTab === "chat"
 							? "bg-[#5b6fff] text-white"
 							: "text-[#8b93a7] hover:text-white"
@@ -102,7 +106,7 @@ export default function CounselorSidebar({
 					Chat
 					{conversationCount > 0 ? (
 						<span
-							className={`inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold ${
+							className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold ${
 								selectedTab === "chat" ? "bg-white/20 text-white" : "bg-[#5b6fff] text-white"
 							}`}
 						>
@@ -113,14 +117,14 @@ export default function CounselorSidebar({
 			</div>
 
 			{/* Tab content */}
-			<div className="flex-1 overflow-y-auto px-2">
+			<div className="flex-1 overflow-y-auto px-3">
 				{selectedTab === "chat" ? (
 					<>
-						<p className="px-2 pb-2 text-[10px] font-semibold uppercase tracking-wider text-[#64748b]">
+						<p className="px-2 pb-2 text-[11px] font-bold uppercase tracking-wider text-[#64748b]">
 							Active Sessions
 						</p>
 						{conversations.length === 0 ? (
-							<p className="px-2 py-4 text-xs text-[#64748b]">No active sessions.</p>
+							<p className="px-2 py-4 text-sm text-[#64748b]">No active sessions.</p>
 						) : (
 							<div className="space-y-0.5">
 								{conversations.map((conv) => (
@@ -133,6 +137,7 @@ export default function CounselorSidebar({
 										lastMessage={conv.lastMessage}
 										isSelected={selectedClientUid === conv.uid}
 										unreadCount={unreadCounts[conv.uid] ?? 0}
+										riskLevel={riskLevels[conv.uid]}
 										onClick={() => onSelectClient(conv.uid)}
 									/>
 								))}
@@ -142,7 +147,7 @@ export default function CounselorSidebar({
 				) : (
 					<div className="p-2">
 						{transcriptContent ?? (
-							<p className="text-xs text-[#64748b]">No transcripts available.</p>
+							<p className="text-sm text-[#64748b]">No transcripts available.</p>
 						)}
 					</div>
 				)}

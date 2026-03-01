@@ -558,7 +558,7 @@ export default function CounselorPage() {
 
 	return (
 		<main className="h-screen overflow-hidden">
-			<div className="grid h-full grid-cols-1 grid-rows-[1fr] md:grid-cols-[300px_1fr]">
+			<div className="grid h-full grid-cols-1 grid-rows-[1fr] md:grid-cols-[35%_1fr]">
 				<CounselorSidebar
 					onSignOut={handleAdminLogout}
 					statusText={statusBannerText}
@@ -568,6 +568,7 @@ export default function CounselorPage() {
 					conversationCount={conversations.length}
 					conversations={conversations}
 					unreadCounts={unreadCounts}
+					riskLevels={riskLevels}
 					selectedClientUid={selectedClientUid}
 					onSelectClient={handleSelectClient}
 				/>
