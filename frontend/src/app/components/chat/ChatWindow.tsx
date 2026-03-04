@@ -97,7 +97,7 @@ export default function ChatWindow({
 					<div className="flex items-center gap-2">
 						<span className="text-lg">📞</span>
 						<p className="text-sm font-medium text-white">
-							Dial this number: <a href="tel:3372703540" className="font-bold text-[#5b6fff] underline">(337) 370-3540</a>
+							Dial this number: <a href="tel:3372703540" className="font-bold text-[#5b6fff] underline">(337) 270-3540</a>
 						</p>
 					</div>
 					<button
