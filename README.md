@@ -1,7 +1,8 @@
 # CrisisLine Voice + Chat Support Platform
 
 A multi-channel crisis support system that combines realtime web chat, counselor takeover controls, and voice-call AI orchestration. It is designed to keep people engaged while live counselors are occupied, then hand control to humans when needed.
-
+</br>
+<a href="https://devpost.com/software/crisisline-ai?ref_content">Irvine Hacks Submission </a>
 ## Why This Project
 Crisis support workflows often face wait-time gaps. This project explores how an AI-first intake layer can provide immediate, empathetic interaction across chat and voice, while preserving a clear path for counselor intervention and review.
 
